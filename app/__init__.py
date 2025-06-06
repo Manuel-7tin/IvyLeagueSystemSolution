@@ -7,7 +7,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine, text
 
 
-def create_postgres_db_if_not_exists(db_name, user, password, host="localhost", port=5432):
+def create_postgres_db_if_not_exists(db_name, user, password, host="dpg-d11it5ffte5s7399ff3g-a", port=5432):
     try:
         # Connect to default postgres database
         conn = psycopg2.connect(dbname='postgres', user=user, password=password, host=host, port=port)
@@ -58,8 +58,7 @@ def reset_database():
 
 
 def create_app():
-
-    create_postgres_db_if_not_exists("ivyleague", "render", "root")
+    create_postgres_db_if_not_exists("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
     load_dotenv()
     # reset_database()
     app = Flask(__name__)
