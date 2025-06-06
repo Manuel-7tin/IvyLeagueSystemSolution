@@ -87,7 +87,7 @@ def register_routes(app):
                         "message": "Payment underway, exercise patience bros.",
                         "paystack_says": response.json()["message"],
                     }
-                ), 200
+                ), 202
             elif feedback.get("status") == "abandoned":
                 return jsonify(
                     {
@@ -95,7 +95,7 @@ def register_routes(app):
                         "message": "Payment underway, it probably hasn't started.",
                         "paystack_says": response.json()["message"],
                     }
-                ), 200
+                ), 202
             elif feedback.get("status") in ["failed", "reversed"]:
                 attempt = db.session.execute(db.select(Attempt).where(Attempt.payment_reference == reference)).scalar()
                 attempt.closed_at = datetime.now()
@@ -108,7 +108,7 @@ def register_routes(app):
                         "message": "The payment is either failed or reversed.",
                         "paystack_says": response.json()["message"],
                     }
-                ), 200
+                ),410
         # data = response.json()
         # return jsonify(data), 200
 
@@ -409,6 +409,12 @@ def register_routes(app):
             elif user_type.lower() == "student":
                 try:
                     student = db.session.execute(db.select(Student).where(Student.reg_no == data.get("reg_no"))).scalar()
+                    if (len(sponsorship.papers) + len(student.papers)) > 4:
+                        return jsonify(
+                            error={
+                                "Error": "User cannot register more than four papers in a diet.",
+                            }
+                        ), 409
                     student.sponsored = True
                     student.sponsors = sponsorship.company
                     student.sponsored_papers = ",".join([paper.split("-")[0] for paper in sponsorship.papers])
@@ -470,7 +476,7 @@ def register_routes(app):
                         error={
                             "Error": "User cannot register more than four papers in a diet."
                         }
-                    ), 403
+                    ), 409
 
             return initialize_payment(data, "registration REG")
 
@@ -686,11 +692,7 @@ def register_routes(app):
     try:
         with app.app_context():
             papers = pd.read_excel("resource/ivy pricing.xlsx")
-            """ name: Mapped[str] = mapped_column(Text, nullable=False)
-            students = relationship("Student", secondary=student_paper, back_populates="papers")
-            code: Mapped[str] = mapped_column(Text, nullable=False)
-            price: Mapped[int] = mapped_column(Integer, nullable=False)
-            revision: Mapped[int] = mapped_column(Integer, nullable=False)"""
+            """"""
             for i, paper in papers.iterrows():
                 if not isinstance(paper["Knowledge papers"], float):
                     if "papers" in paper["Knowledge papers"].lower():
@@ -729,7 +731,7 @@ def register_routes(app):
                 db.session.commit()
 
             with app.app_context():
-                with open("questions.json", mode="r") as file:
+                with open("resource/questions.json", mode="r") as file:
                     data = json.load(file)
                 new_data = SystemData(
                     data_name="reg_form_info",

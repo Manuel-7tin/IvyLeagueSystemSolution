@@ -1,0 +1,65 @@
+[
+    {
+        "subject": "ACCA reg number",
+        "more_info": "Enter 001 if you have not registered yet",
+        "type": "short answer",
+        "options": [],
+        "key": "acca_reg"
+    },
+    {
+        "subject": "Correspondence Address",
+        "more_info": "",
+        "type": "long answer",
+        "options": [],
+        "key": "address"
+    },
+    {
+        "subject": "Employment status",
+        "more_info": "Which group best describes your current stage",
+        "type": "checkboxes",
+        "options": ["Graduate expecting to join the workforce", "Undergraduate", "Fully/Self employed"],
+        "key":  "employed"
+    },
+    {
+        "subject": "Are you interested in Oxford Brookes Bsc Program?",
+        "more_info": "",
+        "type": "checkboxes",
+        "options": ["Yes", "No", "Maybe"],
+        "key":  "oxford"
+    },
+    {
+        "subject": "How did you know about us?",
+        "more_info": "",
+        "type": "checkboxes",
+        "options": ["Friends", "ACCA's website", "Our social media platforms", "Online Ads","Flyer"],
+        "key":  "referral_source"
+    },
+    {
+        "subject": "Referred by a friend? Please state the friend's full name & phone number",
+        "more_info": "",
+        "type": "short answer",
+        "options": [],
+        "key":  "friend"
+    },
+    {
+        "subject": "We seek your consent to upload your details on ACCA-ALP web page for the purpose of result service.",
+        "more_info": "",
+        "type": "boolean",
+        "options": ["Agreed", "Disagreed"],
+        "key":  "alp_consent"
+    },
+    {
+        "subject": "Please ensure all information is accurate, as it will be used to set you up on the ACCA CBE platform. Submitting this form indicates your interest and consent for us to contact you.",
+        "more_info": "",
+        "type": "terms",
+        "options": [],
+        "key":  "accuracy"
+    },
+    {
+        "subject": "By submitting this you confirm that you have read and agreed to our TERMS and CONDITIONS",
+        "more_info": "https://ivyleaguenigeria.com/terms-and-conditions/",
+        "type": "terms",
+        "options": [],
+        "key":  "terms"
+    }
+]
