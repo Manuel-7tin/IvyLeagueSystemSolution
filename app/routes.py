@@ -683,79 +683,82 @@ def register_routes(app):
         return jsonify({"res": s})
 
 
-    # with app.app_context():
-    #     papers = pd.read_excel("resource/ivy pricing.xlsx")
-    #     """ name: Mapped[str] = mapped_column(Text, nullable=False)
-    #     students = relationship("Student", secondary=student_paper, back_populates="papers")
-    #     code: Mapped[str] = mapped_column(Text, nullable=False)
-    #     price: Mapped[int] = mapped_column(Integer, nullable=False)
-    #     revision: Mapped[int] = mapped_column(Integer, nullable=False)"""
-    #     for i, paper in papers.iterrows():
-    #         if not isinstance(paper["Knowledge papers"], float):
-    #             if "papers" in paper["Knowledge papers"].lower():
-    #                 continue
-    #             variations = [(" Standard", "std"), (" Intensive", "int")]
-    #             for i in range(2):
-    #                 code = paper["Knowledge papers"].split()[-1]
-    #                 if code in ["BT", "FA", "MA", "CBL", "OBU", "DipIFRS"] and i != 0:
-    #                     continue
-    #                 if code in ["OBU", "DipIFRS"]:
-    #                     revision = 0
-    #                     extension = ""
-    #                     category = "Additional"
-    #                     price = paper.Standard
-    #                 else:
-    #                     if code in ["BT", "FA", "MA"]:
-    #                         category = "Knowledge"
-    #                     elif code in ["PM", "FR", "AA", "TAX", "FM", "CBL"]:
-    #                         category = "Skill"
-    #                     else:
-    #                         category = "Professional"
-    #                     code = "TX" if code == "TAX" else code
-    #                     code = f"{code}-{variations[i][1]}"
-    #                     extension = variations[i][0]
-    #                     price = paper.Standard + (paper.revision if code[-3:] == "std" else 0)
-    #                     revision = 20_000 if code[-3:] == "std" else 0
-    #
-    #                 new_paper = Paper(
-    #                     name=" ".join(paper["Knowledge papers"].split()[:-1]).title() + extension,
-    #                     code=code,
-    #                     price=int(price),
-    #                     revision=revision,
-    #                     category=category
-    #                 )
-    #                 db.session.add(new_paper)
-    #         db.session.commit()
-    #
-    #     with app.app_context():
-    #         with open("questions.json", mode="r") as file:
-    #             data = json.load(file)
-    #         new_data = SystemData(
-    #             data_name="reg_form_info",
-    #             data=data
-    #         )
-    #         db.session.add(new_data)
-    #         db.session.commit()
-    # with app.app_context():
-    #     insert_sponsored_row("John", "Doe", "KPMG", ["APM-std", "BT-int"], "KPMG12345")
-    #     insert_sponsored_row("Ayomide", "Ojutalayo", "Deloitte", ["AFM-std", "SBL-int"], "Deloitte789")
-    #     insert_sponsored_row("Jane", "Doe", "PWC", ["FM-std", "MA-int"], "PWC12345")
-    #
-    # with app.app_context():
-    #     new_schols = Scholarship(
-    #         email="Jan@samp.com",
-    #         paper=["TX-std", "CBL-int"],
-    #         discount=15,
-    #     )
-    #     db.session.add(new_schols)
-    #     db.session.commit()
-    #
-    # with app.app_context():
-    #     new_schols2 = Scholarship(
-    #         email="ojutalayoayomide21@gmail.com",
-    #         paper="TX-std",
-    #         discount=20,
-    #     )
-    #     db.session.add(new_schols2)
-    #     db.session.commit()
+    try:
+        with app.app_context():
+            papers = pd.read_excel("resource/ivy pricing.xlsx")
+            """ name: Mapped[str] = mapped_column(Text, nullable=False)
+            students = relationship("Student", secondary=student_paper, back_populates="papers")
+            code: Mapped[str] = mapped_column(Text, nullable=False)
+            price: Mapped[int] = mapped_column(Integer, nullable=False)
+            revision: Mapped[int] = mapped_column(Integer, nullable=False)"""
+            for i, paper in papers.iterrows():
+                if not isinstance(paper["Knowledge papers"], float):
+                    if "papers" in paper["Knowledge papers"].lower():
+                        continue
+                    variations = [(" Standard", "std"), (" Intensive", "int")]
+                    for i in range(2):
+                        code = paper["Knowledge papers"].split()[-1]
+                        if code in ["BT", "FA", "MA", "CBL", "OBU", "DipIFRS"] and i != 0:
+                            continue
+                        if code in ["OBU", "DipIFRS"]:
+                            revision = 0
+                            extension = ""
+                            category = "Additional"
+                            price = paper.Standard
+                        else:
+                            if code in ["BT", "FA", "MA"]:
+                                category = "Knowledge"
+                            elif code in ["PM", "FR", "AA", "TAX", "FM", "CBL"]:
+                                category = "Skill"
+                            else:
+                                category = "Professional"
+                            code = "TX" if code == "TAX" else code
+                            code = f"{code}-{variations[i][1]}"
+                            extension = variations[i][0]
+                            price = paper.Standard + (paper.revision if code[-3:] == "std" else 0)
+                            revision = 20_000 if code[-3:] == "std" else 0
+
+                        new_paper = Paper(
+                            name=" ".join(paper["Knowledge papers"].split()[:-1]).title() + extension,
+                            code=code,
+                            price=int(price),
+                            revision=revision,
+                            category=category
+                        )
+                        db.session.add(new_paper)
+                db.session.commit()
+
+            with app.app_context():
+                with open("questions.json", mode="r") as file:
+                    data = json.load(file)
+                new_data = SystemData(
+                    data_name="reg_form_info",
+                    data=data
+                )
+                db.session.add(new_data)
+                db.session.commit()
+        with app.app_context():
+            insert_sponsored_row("John", "Doe", "KPMG", ["APM-std", "BT-int"], "KPMG12345")
+            insert_sponsored_row("Ayomide", "Ojutalayo", "Deloitte", ["AFM-std", "SBL-int"], "Deloitte789")
+            insert_sponsored_row("Jane", "Doe", "PWC", ["FM-std", "MA-int"], "PWC12345")
+
+        with app.app_context():
+            new_schols = Scholarship(
+                email="Jan@samp.com",
+                paper=["TX-std", "CBL-int"],
+                discount=15,
+            )
+            db.session.add(new_schols)
+            db.session.commit()
+
+        with app.app_context():
+            new_schols2 = Scholarship(
+                email="ojutalayoayomide21@gmail.com",
+                paper="TX-std",
+                discount=20,
+            )
+            db.session.add(new_schols2)
+            db.session.commit()
+    except Exception as e:
+        print(f"The expected error don show, i catch the werey. {e}")
 
