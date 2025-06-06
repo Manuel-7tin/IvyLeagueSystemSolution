@@ -30,7 +30,7 @@ def create_postgres_db_if_not_exists(db_name, user, password, host="localhost", 
         print(f"❌ Failed to create database: {e}")
 
 
-engine = create_engine("postgresql://postgres:root@localhost:5432/ivyleague")  # Replace with your actual URL
+engine = create_engine(os.getenv("DATABASE_URL"))  # Replace with your actual URL
 
 def reset_database():
     with engine.connect() as conn:
@@ -59,7 +59,7 @@ def reset_database():
 
 def create_app():
 
-    create_postgres_db_if_not_exists("ivyleague", "postgres", "root")
+    create_postgres_db_if_not_exists("ivyleague", "render", "root")
     load_dotenv()
     # reset_database()
     app = Flask(__name__)
