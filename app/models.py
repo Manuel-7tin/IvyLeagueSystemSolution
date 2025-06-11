@@ -210,3 +210,12 @@ class Scholarship(db.Model):
     paper: Mapped[str] = mapped_column(String, nullable=False)
     discount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class Receipt(Base):
+    __tablename__ = 'receipts'
+
+    id = Column(Integer, primary_key=True)
+    receipt_number = Column(String, nullable=False, unique=True)
+    pdf_data = Column(LargeBinary, nullable=False)
+    created_on = Column(Date, default=date.today)

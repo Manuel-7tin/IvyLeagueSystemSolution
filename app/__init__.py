@@ -7,7 +7,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine, text
 
 
-def create_postgres_db_if_not_exists(db_name, user, password, host="dpg-d11it5ffte5s7399ff3g-a", port=5432):
+def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("HOST")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
     try:
         # Connect to default postgres database
         conn = psycopg2.connect(dbname='postgres', user=user, password=password, host=host, port=port)
@@ -58,13 +58,13 @@ def reset_database():
 
 
 def create_app():
-    create_postgres_db_if_not_exists("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
+
+    create_postgres_db_if_not_exists(os.getenv("DBNAME"), os.getenv("DB_USER"), os.getenv("DB_PASSWORD")) #("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
     load_dotenv()
     # reset_database()
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv("FLASK_APP_SECRET_KEY")
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
-    print(os.getenv("DATABASE_URL"))
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -80,7 +80,7 @@ def create_app():
     from flask_cors import CORS
 
     CORS(app, resources={r"/api/*": {
-        "origins": ["http://localhost:5173", "https://bear-deciding-wren.ngrok-free.app"],  # Or specify your frontend domain
+        "origins": ["http://localhost:5173", "https://bear-deciding-wren.ngrok-free.app", "https://studentportal.ivyleaguenigeria.com"],  # Or specify your frontend domain
         "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
         "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
         "supports_credentials": True

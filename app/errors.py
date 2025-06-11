@@ -11,3 +11,8 @@ class UserNotFoundError(Exception):
             message (str, optional): The error message to display. Defaults to a casual phrasing.
         """
         super().__init__(message)
+
+
+class MissingDetail(Exception):
+    def __init__(self, message="You left something out."):
+        super().__init__(message)

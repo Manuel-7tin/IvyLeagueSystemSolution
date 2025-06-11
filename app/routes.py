@@ -3,18 +3,22 @@ import os
 
 import requests
 import pandas as pd
+from pylint.checkers.utils import error_of_type
+from io import BytesIO
 from config import Config
 from threading import Thread
 from datetime import datetime
-from flask import jsonify, request
-from sqlalchemy.exc import IntegrityError
 from .errors import UserNotFoundError
+from sqlalchemy.exc import IntegrityError
+from flask import jsonify, request, send_file
+from services.other_services import check_api, auth_required
 from services.db_services import insert_sponsored_row, is_valid_password
 from werkzeug.security import generate_password_hash, check_password_hash
-from services.db_services import post_payment_executions, post_webhook_process, exists_in_models
 from services.db_services import move_signee, update_action, update_payment, initialize_payment
+from services.db_services import post_payment_executions, post_webhook_process, exists_in_models
 from services.account_services import send_signup_message, verify_email, send_password_reset_message
 from .models import db, All, Payment, Signee, Student, Sponsored, Paper, SystemData, Scholarship, Attempt
+from .models import Receipt
 
 
 def register_routes(app):
@@ -25,6 +29,7 @@ def register_routes(app):
     # Verify Payment
     # -----------------------------
     @app.route("/api/v1/verify/<reference>", methods=["GET"])
+    @auth_required
     def verify_payment(reference):
         verified = db.session.query(Payment).filter_by(payment_reference=reference).scalar()
         if verified:
@@ -64,7 +69,7 @@ def register_routes(app):
                 exec_response = post_payment_executions(reference, feedback)
                 if exec_response[1] != 200:
                     # key = list(exec_response[0].json["error"].keys())[0]
-                    key, value = exec_response[0].json["error"].items()
+                    key, value = list(exec_response[0].json["error"].items())[0]
                     return jsonify(
                         error = {
                             "message": "Payment confirmed but internal db error, na gbese be this.",
@@ -117,6 +122,7 @@ def register_routes(app):
     # Webhook
     # -----------------------------
     @app.route("/api/v1/webhook", methods=["POST"])
+    @auth_required
     def handle_webhook():
         print("They don call webhook oo")
         event = request.json
@@ -137,15 +143,16 @@ def register_routes(app):
 
 
     @app.route("/api/v1/signup", methods=["POST"])
+    @auth_required
     def sign_up():
         print("i dey come")
-        if request.args.get("api-key") != api_key:
-            # g = request.args.get("api-key")
-            return jsonify(
-                error={
-                    "Access Denied": f"You do not have access to this resource"  # \n type:{type(g)}. it is {g}",
-                }
-            ), 403
+        # if request.args.get("api-key") != api_key:
+        #     # g = request.args.get("api-key")
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": f"You do not have access to this resource"  # \n type:{type(g)}. it is {g}",
+        #         }
+        #     ), 403
         data = request.get_json()
 
         # Check if they are already signed up
@@ -174,6 +181,13 @@ def register_routes(app):
                     "Invalid Password": f"Error cause: [{ver_pword[1]}]",
                 }
             ), 400
+        if len(data.get("phone")) > 15:
+            return jsonify(
+                error={
+                    "Invalid PhoneNUmber": f"{data.get('phone')} is not a valid number!",
+                }
+            ), 400
+
         hash_and_salted_password = generate_password_hash(
             data.get("password"),
             method='pbkdf2:sha256',
@@ -226,14 +240,15 @@ def register_routes(app):
 
 
     @app.route("/api/v1/signin", methods=["POST"])
+    @auth_required
     def sign_in():
-        if request.args.get("api-key") != api_key:
-            # g = request.args.get("api-key")
-            return jsonify(
-                error={
-                    "Access Denied": f"You do not have access to this resource"  # \n type:{type(g)}. it is {g}",
-                }
-            ), 403
+        # if request.args.get("api-key") != api_key:
+        #     # g = request.args.get("api-key")
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": f"You do not have access to this resource"  # \n type:{type(g)}. it is {g}",
+        #         }
+        #     ), 403
         data = request.get_json()
         login_type = data.get("type")
 
@@ -247,7 +262,7 @@ def register_routes(app):
                 if not user:  # User is not a signee either
                     return jsonify(
                         error={
-                            "Incorrect Input": f"Email or password incorrect"  # \n type:{type(g)}. it is {g}",
+                            "Incorrect Input": "Account does not exist" #f"Email or password incorrect"  # \n type:{type(g)}. it is {g}",
                         }
                     ), 403
 
@@ -340,26 +355,88 @@ def register_routes(app):
                 }
             ), 409
 
+
+    @app.route("/api/v1/refresh", methods=["GET"])
+    @auth_required
+    def send_data():
+        output = db.session.execute(db.select(Student).where(Student.email == request.args.get("email")))
+        person = output.scalar()
+
+        if not person:  # User is not a registered student
+            output = db.session.execute(db.select(Signee).where(Signee.email == request.args.get("email")))
+            person = output.scalar()
+            if not person:  # User is not a signee either
+                return jsonify(
+                    error={
+                        "Incorrect Input": "Account does not exist"
+                        # f"Email or password incorrect"  # \n type:{type(g)}. it is {g}",
+                    }
+                ), 403
+            return jsonify({
+                "title": person.title,
+                "firstname": person.first_name,
+                "lastname": person.last_name,
+                "email": person.email,
+                "gender": person.gender,
+                "user_status": "signee",
+                "dob": person.birth_date,
+                "phone_no": person.phone_number,
+                "email_verified": person.email_confirmed,
+                "address": "",
+                "reg_no": "",
+                "acca_reg": ""
+            })
+        return jsonify({
+            "title": person.title,
+            "firstname": person.first_name,
+            "lastname": person.last_name,
+            "email": person.email,
+            "gender": person.gender,
+            "dob": person.birth_date,
+            "phone_no": person.phone_number,
+            "email_verified": True,  # temporarily
+            "address": person.house_address,
+            "reg_no": person.reg_no,
+            "acca_reg": person.acca_reg_no,
+            "papers": [{paper.code: paper.name} for paper in person.papers],
+            "user_status": "student",
+        })
+
     @app.route("/api/v1/register", methods=["POST"])
+    @auth_required
     def register():
-        api_key = request.args.get("api-key")
-        if api_key != api_key:
+        # if request.args.get("api-key") != api_key:
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": "You do not have access to this resource",
+        #         }
+        #     ), 403
+        data = request.get_json()
+        keys = ["diet", "email", "firstname", "lastname", "sponsored", "user_status", "user_data"] #reg_no
+        keys += ["amount", "phone"] if not data.get("sponsored") else []
+        nested = {
+            "user_data": []
+        }
+        nested["user_data"] += ["employed", "acca_reg", "address", "referral_source", "oxford", "accuracy", "alp_consent", "terms"] if data.get("user_status") == "signee" else []
+        nested["user_data"] += ["papers", "discount", "discount_papers"] if not data.get("sponsored") else []
+        valid, error_info, res_code = check_api(data=data, required_fields=keys, nested_fields=nested)
+        print(error_info)
+        if not valid:
             return jsonify(
                 error={
-                    "Access Denied": "You do not have access to this resource",
+                    error_info[0]: error_info[1]
                 }
-            ), 403
-        data = request.get_json()
+            ), res_code
         # Each diet has its own tables that would be named as such, the table to open will be determined by the diet
         # This is for future updates purposes
         print("tiypiee:", type(data.get("diet")))
-        user_type = data.get("user_status")
+        user_type = data.get("user_status", "None")
         if user_type.lower() != "signee" and user_type.lower() != "student":
             return jsonify(
                 error={
                     "Unknown User Type": f"User type {user_type} is not accepted"
                 }
-            )
+            ), 400
         if data.get("sponsored"):  # User is sponsored by an organization
             sponsorship = db.session.execute(db.select(Sponsored).where(Sponsored.token == data.get("token"))).scalar()
             if not sponsorship:
@@ -415,12 +492,19 @@ def register_routes(app):
                                 "Error": "User cannot register more than four papers in a diet.",
                             }
                         ), 409
+                    for j in sponsorship.papers:
+                        if j in [paper.code for paper in student.papers]:
+                            return  jsonify(
+                                error={
+                                    "User Error": f"You are already taking {j}, you can't take it twice concurrently. Contact Admin for support."
+                                }
+                            ), 404
                     student.sponsored = True
                     student.sponsors = sponsorship.company
                     student.sponsored_papers = ",".join([paper.split("-")[0] for paper in sponsorship.papers])
                     student.employment_status = "Fully/Self employed"
                     papers = db.session.query(Paper).filter(Paper.code.in_(sponsorship.papers)).all()
-                    student.papers.append(papers)  # Relevant ones in the absence of sponsors
+                    student.papers.extend(papers)  # Relevant ones in the absence of sponsors
                     student.total_fee += sum([paper.price for paper in papers])  # Relevant ones in the absence of sponsors
                     student.amount_paid += sum(
                         [paper.price for paper in papers])  # Relevant ones in the absence of sponsors
@@ -435,10 +519,6 @@ def register_routes(app):
                         }
                     ), 409
                 # else:
-                    # return jsonify({
-                    #     "status": "success",
-                    #     "message": "Registration successful",
-                    # }), 201
             elif user_type == "old student":
                 pass
 
@@ -449,6 +529,8 @@ def register_routes(app):
                     "message": "Registration successful",
                     "user_status": "student",
                     "reg_no": fresh_student.reg_no,
+                    "acca_reg_no": fresh_student.acca_reg_no,
+                    "papers": [{paper.code: paper.name} for paper in fresh_student.papers],
                     "fee": 0,
                     "scholarship": [] if not fresh_student.discount > 0 else fresh_student.discount_papers
                 }), 201
@@ -482,13 +564,14 @@ def register_routes(app):
 
 
     @app.route("/api/v1/required-info", methods=["GET"])
+    @auth_required
     def needed_info():
-        if request.args.get("api-key") != api_key:
-            return jsonify(
-                error={
-                    "Access Denied": "You do not have access to this resource",
-                }
-            ), 403
+        # if request.args.get("api-key") != api_key:
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": "You do not have access to this resource",
+        #         }
+        #     ), 403
         data_name = request.args.get("title")
         data = db.session.query(SystemData).filter_by(data_name=data_name).scalar()
         if data:
@@ -501,13 +584,14 @@ def register_routes(app):
             ), 400
 
     @app.route("/api/v1/courses", methods=["GET"])
+    @auth_required
     def get_courses():
-        if request.args.get("api-key") != api_key:
-            return jsonify(
-                error={
-                    "Access Denied": f"You do not have access to this resource",
-                }
-            ), 403
+        # if request.args.get("api-key") != api_key:
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": f"You do not have access to this resource",
+        #         }
+        #     ), 403
         try:
             user_type = request.args.get("user_status").lower()
             if user_type.lower() not in ["signee", "student", "old_student"]:
@@ -525,7 +609,7 @@ def register_routes(app):
         details = {}
         if request.args.get("reg").lower() in ["true", 1, "t", "y", "yes", "yeah"]:
             scholarships = db.session.query(Scholarship).filter_by(email=request.args.get("email")).all()
-            details["scholarships"] = [{"paper": i.paper[:-1].replace("{", ""), "percentage": i.discount} for i in scholarships]
+            details["scholarships"] = [{"paper": i.paper, "percentage": i.discount} for i in scholarships]
             details["fee"] = [{"amount":5000, "reason": "One time student registration."}] if user_type == "signee" else []
             acca_reg_no = request.args.get("acca_reg")
             if user_type ==  "signee":
@@ -602,13 +686,14 @@ def register_routes(app):
 
 
     @app.route("/api/v1/confirm-email", methods=["POST"])
+    @auth_required
     def confirm_email():
-        if request.args.get("api-key") != api_key:
-            return jsonify(
-                error={
-                    "Access Denied": f"You do not have access to this resource",
-                }
-            ), 403
+        # if request.args.get("api-key") != api_key:
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": f"You do not have access to this resource",
+        #         }
+        #     ), 403
         token = request.args.get("token")
         if token is None:
             data = request.get_json()
@@ -635,13 +720,14 @@ def register_routes(app):
                 ), 400
 
     @app.route("/api/v1/reset-password", methods=["POST"])
+    @auth_required
     def reset_password():
-        if request.args.get("api-key") != api_key:
-            return jsonify(
-                error={
-                    "Access Denied": f"You do not have access to this resource",
-                }
-            ), 403
+        # if request.args.get("api-key") != api_key:
+        #     return jsonify(
+        #         error={
+        #             "Access Denied": f"You do not have access to this resource",
+        #         }
+        #     ), 403
         token = request.args.get("token")
         data = request.get_json()
         if token:
@@ -683,10 +769,22 @@ def register_routes(app):
 
 
     @app.route("/api/v1/temp", methods=["GET"])
+    @auth_required
     def gy():
         s = request.args.get("api-key").lower() == "true"
         print(type(s), s)
         return jsonify({"res": s})
+
+    @app.route("/api/v1/receipt/<receipt_number>")
+    def get_receipt(receipt_number):
+        receipt = db.session.query(Receipt).filter_by(receipt_number=receipt_number).first()
+        if not receipt:
+            return "Not found", 404
+        return send_file(
+            BytesIO(receipt.pdf_data),
+            mimetype='application/pdf',
+            download_name=f"receipt_{receipt_number}.pdf"
+        )
 
 
     try:
@@ -744,14 +842,15 @@ def register_routes(app):
             insert_sponsored_row("Ayomide", "Ojutalayo", "Deloitte", ["AFM-std", "SBL-int"], "Deloitte789")
             insert_sponsored_row("Jane", "Doe", "PWC", ["FM-std", "MA-int"], "PWC12345")
 
-        with app.app_context():
-            new_schols = Scholarship(
-                email="Jan@samp.com",
-                paper=["TX-std", "CBL-int"],
-                discount=15,
-            )
-            db.session.add(new_schols)
-            db.session.commit()
+        for pp in ["TX-std", "CBL-int"]:
+            with app.app_context():
+                new_schols = Scholarship(
+                    email="Jan@samp.com",
+                    paper=pp,
+                    discount=15,
+                )
+                db.session.add(new_schols)
+                db.session.commit()
 
         with app.app_context():
             new_schols2 = Scholarship(
