@@ -3,7 +3,6 @@ import os
 
 import requests
 import pandas as pd
-from pylint.checkers.utils import error_of_type
 from io import BytesIO
 from config import Config
 from threading import Thread
