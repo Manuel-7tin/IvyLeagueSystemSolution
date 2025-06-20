@@ -19,7 +19,8 @@ student_paper = Table(
     "registrations",
     db.metadata,
     Column("student_id", Integer, ForeignKey("students.id")),
-    Column("paper_id", Integer, ForeignKey("papers.id"))
+    Column("paper_id", Integer, ForeignKey("papers.id")),
+    Column("registration_date", Date, default=date.today())
 )
 
 
@@ -74,6 +75,7 @@ class Student(db.Model):
     reg_date: Mapped[date] = mapped_column(Date, nullable=False, default=datetime.now())
     acca_reg_no: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     birth_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # photo: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     gender = mapped_column(String(5), nullable=False)
     joined: Mapped[date] = mapped_column(Date, nullable=False)
@@ -109,7 +111,10 @@ class Payment(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     payment_reference: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    student_reg: Mapped[str] = mapped_column(String(100), nullable=False)
     sponsored: Mapped[bool] = mapped_column(Boolean, default=False)
+    context: Mapped[list] = mapped_column(ARRAY(String), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False)
     paystack_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message : Mapped[Optional[str]] = mapped_column(String(100))
     medium : Mapped[Optional[str]] = mapped_column(String(100), nullable=False)
@@ -123,6 +128,8 @@ class Payment(db.Model):
     customer_data: Mapped[Optional[dict]] = mapped_column(db.JSON)
     created_at: Mapped[date] = mapped_column(Date, nullable=False)
     paid_at: Mapped[date] = mapped_column(Date, nullable=False)
+    receipt_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    receipt: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
     student_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("students.id"))
     student = relationship("Student", back_populates="payments")
 
@@ -148,7 +155,7 @@ class Attempt(db.Model):
     user_type: Mapped[str] = mapped_column(String(20), nullable=False)
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[date] = mapped_column(DateTime, default=datetime.now)
-    purpose: Mapped[str] = mapped_column(String(30), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False)
     context: Mapped[list] = mapped_column(ARRAY(String), nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     closed_at: Mapped[Optional[date]] = mapped_column(DateTime)
@@ -212,10 +219,13 @@ class Scholarship(db.Model):
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class Receipt(Base):
-    __tablename__ = 'receipts'
-
-    id = Column(Integer, primary_key=True)
-    receipt_number = Column(String, nullable=False, unique=True)
-    pdf_data = Column(LargeBinary, nullable=False)
-    created_on = Column(Date, default=date.today)
+# class Receipt(Base):
+#     __tablename__ = 'receipts'
+#
+#     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+#     receipt_number: Mapped[str] = mapped_column(String(100), nullable=False)
+#     student_reg: Mapped[str] = mapped_column(String(100), nullable=False)
+#     pdf_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
+#     created_on: Mapped[date] = mapped_column(DateTime, default=datetime.now())
+#     student_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("students.id"))
+#     student = relationship("Student", back_populates="receipts")

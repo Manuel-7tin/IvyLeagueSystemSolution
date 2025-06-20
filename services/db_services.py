@@ -2,7 +2,10 @@ import re
 import uuid
 import requests
 import sqlalchemy
+from io import BytesIO
 from pprint import pprint
+
+from pylint.lint import save_results
 
 # from run import app
 from app.models import db
@@ -93,6 +96,28 @@ def calculate_discount_amount(discount: list, papers: list):
     for i in range(len(discount_papers)):
         amount += discount_papers[i].price * (discount[i]/100)
     return amount
+
+# def store_receipt(no: str, reg: str, student_id: int, file: BytesIO):
+#     try:
+#         file.seek(0)
+#         binary_data = file.read()
+#         receipt = Receipt(
+#             receipt_number=no,
+#             student_reg=reg,
+#             pdf_data=binary_data,
+#             student_id=student_id
+#         )
+#         db.session.add(receipt)
+#         db.session.commit()
+#         print("Receipt stored successfully.")
+#     except Exception as e:
+#         print(e)
+#         db.session.rollback()
+#         raise ValueError #Create custom erro later
+#     finally:
+#         pass
+#         # db.session.close()
+
 
 def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_details: any=None):
     stmt = select(func.count()).select_from(Student)
@@ -190,20 +215,46 @@ def update_action(email, action, details):
     db.session.commit()
 
 
-def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_details: any=None):
+def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_details: any=None, **kwargs):
     student = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
+    if len(kwargs.get("context", [])) < 1 or not kwargs.get("purpose") or len(kwargs.get("user_info", [])) != 5:
+        raise ValueError # Create custom error later
+
+    max_id = db.session.query(func.max(Payment.id)).scalar() or 0
+    new_receipt_no = f"RCPT-{max_id + 1:06d}"
+    user_details = kwargs.get("user_info")
+    user_info = {
+        "users_name": f"{user_details[0]} {user_details[1]}",
+        "phone_no": user_details[2],
+        "email": user_details[3],
+        "reg_no": user_details[4]
+    }
     if sponsored:
         papers = db.session.query(Paper).filter(Paper.code.in_(spons_details.papers)).all()
+        transaction_details = [{
+            "purpose": kwargs.get("purpose"),
+            "desc": f"{sponsored_paper.name} Lectures",
+            "amount": f"{sponsored_paper.price}",
+        } for sponsored_paper in papers]
+        from pprint import pprint
+        pprint(transaction_details)
+
+        receipt_file = send_receipt(receipt_no=new_receipt_no, user_data=user_info, details=transaction_details, spons=True)
         new_payment = Payment(
             amount=sum([paper.price for paper in papers]),
             payment_reference=spons_details.token,
+            student_reg=student.reg_no,
             sponsored=sponsored,
+            context=kwargs.get("context"),
+            purpose=kwargs.get("purpose"),
             paystack_id=0000000000,
             medium=spons_details.company,
             fee=0,
             currency="Unknown",
             created_at=datetime.now(),
             paid_at=datetime(2060, 12, 31),
+            receipt_number=new_receipt_no,
+            receipt=receipt_file.getvalue(),
             student=student
         )
     else:
@@ -211,9 +262,22 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
         print("in", type(payment_data))
         pprint(payment_data)
         skip_log = False if payment_data.get("log") else True
+        transaction_details = [{
+            "purpose": kwargs.get("purpose"),
+            "desc": f"{paper.name} Lectures",
+            "amount": f"{paper.price}",
+        } for paper in db.session.query(Paper).filter(Paper.code.in_(kwargs.get("context"))).all()]
+        other_transactions = kwargs.get("discount_transactions")
+        other_transactions and transaction_details.extend(other_transactions) # will append if other_trans not None
+
+
+        receipt_file = send_receipt(receipt_no=new_receipt_no, user_data=user_info, details=transaction_details)
         new_payment = Payment(
             amount=payment_data.get("amount")/100,
             payment_reference=payment_data.get("reference"),
+            student_reg=student.reg_no,
+            context=kwargs.get("context"),
+            purpose=kwargs.get("purpose"),
             paystack_id=payment_data.get("id"),
             medium=payment_data.get("channel"),
             currency=payment_data.get("currency"),
@@ -226,6 +290,8 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
             customer_data=payment_data.get("customer"),
             created_at=payment_data.get("created_at"),
             paid_at=payment_data.get("paid_at"),
+            receipt_number=new_receipt_no,
+            receipt=receipt_file.getvalue(),
             student=student
         )
     db.session.add(new_payment)
@@ -259,34 +325,26 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
     if user_type.lower() == "signee":
         try:
             res = move_signee(attempt.other_data, sponsored=False, paid=amount_paid, email=email)
-            update_payment(sponsored=False, email=email, payment_data=payment_data)
+            user = db.session.query(Student).filter_by(email=email).scalar()
+            update_payment(sponsored=False,
+                           email=email,
+                           payment_data=payment_data,
+                           context=attempt.context,
+                           purpose=attempt.purpose,
+                           user_info=[user.first_name, user.last_name, user.phone_number, user.email, user.reg_no],
+                           discount_transactions=res
+                           )
+            operation_details = f"User registered their first ever course, payments made, [{attempt.context} | Refr: {reference}]"
+            update_action(email, "Registered a course.", operation_details)
         except Exception as e:
             pprint(attempt.other_data)
             return jsonify(
                 error={"Error in post payment func": f"Unknown error {e}"}
             ), 500
         else: #User registered their first ever course, payments made, [['TX-std', 'SBL-std']]
-            operation_details = f"User registered their first ever course, payments made, [{attempt.context} | Refr: {reference}]"
-            update_action(email, "Registered a course.", operation_details)
-            papers = attempt.other_data.get("papers")
-            papers = db.session.query(Paper).filter(Paper.code.in_(papers))
             print("Deleting attempt")
             db.session.delete(attempt)
             db.session.commit()
-            user = db.session.query(Student).filter_by(email=email).scalar()
-            user_info = {
-                "users_name": f"{user.first_name} {user.last_name}",
-                "phone_no": user.phone_number,
-                "email": user.email,
-                "reg_no": user.reg_no
-            }
-            transaction_details = [{
-                            "purpose": "Tuition",
-                            "desc": f"{paper.name} Lectures",
-                            "amount": f"{paper.price}",
-                        } for paper in papers]
-            transaction_details.extend(res)
-            send_receipt(user_data=user_info, details=transaction_details)
             return jsonify({
                 "title": user.title,
                 "firstname": user.first_name,
@@ -319,40 +377,37 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
             student.refund=student.amount_paid-student.total_fee if payment_status == "Overpaid" else 0,
             student.receivable=student.total_fee-student.amount_paid if payment_status == "Partly paid" else 0,
             # db.session.commit()
-            update_payment(sponsored=False, email=email, payment_data=payment_data)
-        except Exception as e:
-            return jsonify(
-                error={"Error in post payment func": f"Unknown error {e}"}
-            ), 400
-        else:
-            operation_details = f"User registered a new course, they were a student already, payments made, [{attempt.context} | Refr: {reference}]"
-            update_action(email, "Registered a course.", operation_details)
-            transaction_details = [{
-                                        "purpose": "Tuition",
-                                        "desc": f"{paper.name} Lectures",
-                                        "amount": f"{paper.price}",
-                                    } for paper in papers]
+
+            transaction_discounts = []
             scholarships = db.session.query(Scholarship).filter_by(email=attempt.email).all()
             if attempt.other_data.get("discount_papers") and scholarships:
                 for scholarship in scholarships:
                     if scholarship.paper in attempt.other_data.get("discount_papers"):
-                        transaction_details.append({
+                        transaction_discounts.append({
                             "purpose": "Discount",
                             "desc": f"{scholarship.discount}% discount on {scholarship.paper}",
                             "amount": f"-{[(scholarship.discount/100)*i.price for i in papers if i.code == scholarship.paper][0]}"
                         })
                         scholarship.email = scholarship.email + " |used"
                         scholarship.used = True
+            update_payment(sponsored=False,
+                           email=email,
+                           payment_data=payment_data,
+                           context=attempt.context,
+                           purpose=attempt.purpose,
+                           user_info=[student.first_name, student.last_name, student.phone_number, student.email, student.reg_no],
+                           discount_transactions=transaction_discounts
+                           )
+            operation_details = f"User registered a new course, they were a student already, payments made, [{attempt.context} | Refr: {reference}]"
+            update_action(email, "Registered a course.", operation_details)
+        except Exception as e:
+            return jsonify(
+                error={"Error in post payment func": f"Unknown error {e}"}
+            ), 400
+        else:
             db.session.delete(attempt)
             db.session.commit()
             user = db.session.query(Student).filter_by(email=email).scalar()
-            user_info = {
-                "users_name": f"{user.first_name} {user.last_name}",
-                "phone_no": user.phone_number,
-                "email": user.email,
-                "reg_no": user.reg_no
-            }
-            send_receipt(user_data=user_info, details=transaction_details)
             return jsonify({
                 "title": user.title,
                 "firstname": user.first_name,

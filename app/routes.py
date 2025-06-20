@@ -5,19 +5,20 @@ import requests
 import pandas as pd
 from io import BytesIO
 from config import Config
+from sqlalchemy import func
 from threading import Thread
 from datetime import datetime
 from .errors import UserNotFoundError
 from sqlalchemy.exc import IntegrityError
 from flask import jsonify, request, send_file
 from services.other_services import check_api, auth_required
-from services.db_services import insert_sponsored_row, is_valid_password
 from werkzeug.security import generate_password_hash, check_password_hash
+from services.db_services import insert_sponsored_row, is_valid_password
 from services.db_services import move_signee, update_action, update_payment, initialize_payment
 from services.db_services import post_payment_executions, post_webhook_process, exists_in_models
 from services.account_services import send_signup_message, verify_email, send_password_reset_message
 from .models import db, All, Payment, Signee, Student, Sponsored, Paper, SystemData, Scholarship, Attempt
-from .models import Receipt
+from services.account_services import send_receipt
 
 
 def register_routes(app):
@@ -457,6 +458,7 @@ def register_routes(app):
                         "Expired Token": "The inputted code is used, try again.",
                     }
                 ), 409
+            sponsored_papers = db.session.query(Paper).filter(Paper.code.in_(sponsorship.papers)).all()
 
             if user_type.lower() == "signee":
                 try:
@@ -470,7 +472,15 @@ def register_routes(app):
                                 email=data.get("email"))
                     operation_details = f"User registered their first ever course, courses are sponsored, [{sponsorship.papers}]"
                     update_action(data.get("email"), "Became a student.", operation_details)
-                    update_payment(sponsored=True, email=data.get("email"), spons_details=sponsorship)
+                    student = db.session.execute(db.select(Student).where(Student.email == data.get("email"))).scalar()
+                    update_payment(sponsored=True,
+                                   email=data.get("email"),
+                                   spons_details=sponsorship,
+                                   context=sponsorship.papers,
+                                   purpose="Tuition",
+                                   user_info=[student.first_name, student.last_name, student.phone_number,
+                                              data.get("email"), student.reg_no],
+                                   )
                 except UserNotFoundError as e:
                     return jsonify(
                         error={
@@ -485,12 +495,6 @@ def register_routes(app):
             elif user_type.lower() == "student":
                 try:
                     student = db.session.execute(db.select(Student).where(Student.reg_no == data.get("reg_no"))).scalar()
-                    if (len(sponsorship.papers) + len(student.papers)) > 4:
-                        return jsonify(
-                            error={
-                                "Error": "User cannot register more than four papers in a diet.",
-                            }
-                        ), 409
                     for j in sponsorship.papers:
                         if j in [paper.code for paper in student.papers]:
                             return  jsonify(
@@ -498,18 +502,31 @@ def register_routes(app):
                                     "User Error": f"You are already taking {j}, you can't take it twice concurrently. Contact Admin for support."
                                 }
                             ), 404
+                    if (len(sponsorship.papers) + len(student.papers)) > 4:
+                        return jsonify(
+                            error={
+                                "Error": "User cannot register more than four papers in a diet.",
+                            }
+                        ), 409
                     student.sponsored = True
                     student.sponsors = sponsorship.company
-                    student.sponsored_papers = ",".join([paper.split("-")[0] for paper in sponsorship.papers])
+                    student.sponsored_papers = ",".join([sponsored_paper.split("-")[0] for sponsored_paper in sponsorship.papers])
                     student.employment_status = "Fully/Self employed"
-                    papers = db.session.query(Paper).filter(Paper.code.in_(sponsorship.papers)).all()
-                    student.papers.extend(papers)  # Relevant ones in the absence of sponsors
-                    student.total_fee += sum([paper.price for paper in papers])  # Relevant ones in the absence of sponsors
+                    student.papers.extend(sponsored_papers)  # Relevant ones in the absence of sponsors
+                    student.total_fee += sum([sponsored_paper.price for sponsored_paper in sponsored_papers])  # Relevant ones in the absence of sponsors
                     student.amount_paid += sum(
-                        [paper.price for paper in papers])  # Relevant ones in the absence of sponsors
+                        [sponsored_paper.price for sponsored_paper in sponsored_papers])  # Relevant ones in the absence of sponsors
                     sponsorship.used = True
                     db.session.commit()
                     operation_details = f"User registered a new course, they were a student already, courses are sponsored, [{sponsorship.papers}]"
+                    update_payment(sponsored=True,
+                                   email=data.get("email"),
+                                   spons_details=sponsorship,
+                                   context=sponsorship.papers,
+                                   purpose="Tuition",
+                                   user_info=[student.first_name, student.last_name, student.phone_number,
+                                              data.get("email"), student.reg_no],
+                                   )
                     update_action(data.get("email"), "Registered a course.", operation_details)
                 except Exception as e:
                     return jsonify(
@@ -520,6 +537,7 @@ def register_routes(app):
                 # else:
             elif user_type == "old student":
                 pass
+
 
             fresh_student = db.session.query(Student).filter_by(email=data.get("email")).scalar()
             if fresh_student and user_type != "old student":
@@ -559,7 +577,7 @@ def register_routes(app):
                         }
                     ), 409
 
-            return initialize_payment(data, "registration REG")
+            return initialize_payment(data, "Tuition REG")
 
 
     @app.route("/api/v1/required-info", methods=["GET"])
@@ -774,16 +792,70 @@ def register_routes(app):
         print(type(s), s)
         return jsonify({"res": s})
 
-    @app.route("/api/v1/receipt/<receipt_number>")
-    def get_receipt(receipt_number):
-        receipt = db.session.query(Receipt).filter_by(receipt_number=receipt_number).first()
-        if not receipt:
-            return "Not found", 404
+    @app.route("/api/v1/receipt", methods=["GET"])
+    @auth_required
+    def get_receipt():
+        print("in get receipt")
+        receipt_no = request.args.get("receipt_no")
+        payment = db.session.query(Payment).filter_by(receipt_number=receipt_no).first()
+        if not payment:
+            print("receipt not found", receipt_no)
+            return jsonify(
+                error={
+                    "MissingData Error": f"Receipt file not found."
+                }
+            ), 404
         return send_file(
-            BytesIO(receipt.pdf_data),
+            BytesIO(payment.receipt),
             mimetype='application/pdf',
-            download_name=f"receipt_{receipt_number}.pdf"
+            download_name=f"receipt_{payment.receipt_number}.pdf"
         )
+
+
+    @app.route("/api/v1/all-payments", methods=["GET"])
+    @auth_required
+    def all_payments():
+        reg_no = request.args.get("reg_no")
+        if not reg_no:
+            print("no reg no")
+            return jsonify(
+                error={
+                    "Missing Argument": f"No registration number found."
+                }
+            ), 404
+        payments = db.session.query(Payment).filter_by(student_reg=reg_no).all()
+        if not payments:
+            print(reg_no)
+            return jsonify(
+                error={
+                    "In-Existent Data": f"No payment history found for this user."
+                }
+            ), 404
+        response = []
+        for payment in payments:
+            response.append({
+                "papers": payment.context,
+                "ref_id": payment.payment_reference,
+                "amount": payment.amount,
+                "date": payment.paid_at
+            })
+        return jsonify(response)
+
+    @app.route("/api/v1/receipts", methods=["GET"])
+    @auth_required
+    def all_receipts():
+        reg_no = request.args.get("reg_no")
+        payments = db.session.query(Payment).filter_by(student_reg=reg_no).all()
+        response = []
+        for payment in payments:
+            response.append({
+                "receipt_no": payment.receipt_number,
+                "papers": payment.context,
+                "amount": payment.amount,
+                "date": payment.paid_at #Change after editing db
+            })
+        return response
+
 
 
     try:
@@ -839,6 +911,7 @@ def register_routes(app):
         with app.app_context():
             insert_sponsored_row("John", "Doe", "KPMG", ["APM-std", "BT-int"], "KPMG12345")
             insert_sponsored_row("Ayomide", "Ojutalayo", "Deloitte", ["AFM-std", "SBL-int"], "Deloitte789")
+            insert_sponsored_row("Ayomide", "Ojutalayo", "AGBA", ["AFM-std", "PM-int"], "AGBA123")
             insert_sponsored_row("Jane", "Doe", "PWC", ["FM-std", "MA-int"], "PWC12345")
 
         for pp in ["TX-std", "CBL-int"]:

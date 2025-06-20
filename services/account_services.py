@@ -59,7 +59,7 @@ def verify_email(token):
         return "invalid", None
 
 
-def create_receipt_pdf2(num: int, watermark_img="resource/ivyleague-logo.jpg", **kwargs):
+def create_receipt_pdf2(num: str, watermark_img="resource/ivyleague-logo.jpg", **kwargs):
     # Define a receipt-size page: width = 80mm, height = 200mm
     if not num:
         return
@@ -111,8 +111,8 @@ def create_receipt_pdf2(num: int, watermark_img="resource/ivyleague-logo.jpg", *
     c.drawString(30, height - 100, address)
 
     # Receipt Info
-    c.drawString(width - 200, height - 70, f"Date: {date.today().isoformat()}")
-    c.drawString(width - 200, height - 85, f"Receipt No: {num:07d}")
+    c.drawString(width - 210, height - 70, f"Date: {date.today().isoformat()}")
+    c.drawString(width - 210, height - 85, f"Receipt No: {num}")
 
     # Customer Details
     c.setFillColor(colors.HexColor("#204474"))
@@ -131,10 +131,14 @@ def create_receipt_pdf2(num: int, watermark_img="resource/ivyleague-logo.jpg", *
 
     # Items table
     # Curved box representing payment details
+    num_lines = len(kwargs.get("transactions", [])) + 2
+    line_height = 22
+    min_height = 130  # or whatever you know looks fine
+
     box_x = 30
-    box_y = height - 330  # Matches the original table's vertical position
+    box_y = height - 330 if len(kwargs.get("transactions")) < 5 else height - 338
     box_width = width - 60
-    box_height = 130
+    box_height = max(min_height, num_lines * line_height)#130
     corner_radius = 12
 
     c.setStrokeColor(colors.black)
@@ -148,34 +152,34 @@ def create_receipt_pdf2(num: int, watermark_img="resource/ivyleague-logo.jpg", *
     # c.drawString(box_x + 350, box_y + box_height - 20, "PAPER-CODE")
 
     c.setFont("Helvetica", 10)
+    total = 0
     loops = 40
     for i in kwargs.get("transactions"):
         c.drawString(box_x + 10, box_y + box_height - loops, i.get("purpose", "--"))
         c.drawString(box_x + 90, box_y + box_height - loops, i.get("desc", "--"))
-        c.drawString(box_x + 360, box_y + box_height - loops, i.get("amount", "--"))
+        c.drawString(box_x + 360, box_y + box_height - loops,f"# {i.get("amount", "--")}")
         # c.drawString(box_x + 350, box_y + box_height - loops, i.get("code", "--"))
+        if not i.get("amount") or not i.get("amount").replace('.', '').replace('-', '').isdigit():
+            return False #TO be replaced with custom error
+        total += float(i.get("amount"))
         loops += 20
-    # c.drawString(box_x + 10, box_y + box_height - 40, "Consulting Services")
-    # c.drawString(box_x + 180, box_y + box_height - 40, "$50")
-    # c.drawString(box_x + 240, box_y + box_height - 40, "2")
-    # c.drawString(box_x + 290, box_y + box_height - 40, "$100")
-    #
-    # c.drawString(box_x + 10, box_y + box_height - 60, "Hosting Plan")
-    # c.drawString(box_x + 180, box_y + box_height - 60, "$10")
-    # c.drawString(box_x + 240, box_y + box_height - 60, "5")
-    # c.drawString(box_x + 290, box_y + box_height - 60, "$50")
-    #
-    # c.drawString(box_x + 10, box_y + box_height - 80, "Support")
-    # c.drawString(box_x + 180, box_y + box_height - 80, "$20")
-    # c.drawString(box_x + 240, box_y + box_height - 80, "1")
-    # c.drawString(box_x + 290, box_y + box_height - 80, "$20")
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(box_x + 10, box_y + box_height - (loops+30), "TOTAL:")
+    c.drawString(box_x + 360, box_y + box_height - (loops+30), f"₦ {total}")
 
 
     # Paid stamp
-    pdfmetrics.registerFont(TTFont('Castellar', 'C:\Windows\Fonts\STENCIL.TTF'))
-    c.setFont("Castellar", 50)
-    c.setFillColor(colors.HexColor("#000000"))  # LimeGreen
-    c.drawString(360, 40, "PAID")
+    if kwargs.get("sponsored"):
+        pdfmetrics.registerFont(TTFont('baskvill', r'C:\Windows\Fonts\BASKVILL.TTF'))
+        c.setFont("baskvill", 40)
+        c.setFillColor(colors.HexColor("#000000"))  # LimeGreen
+        c.drawString(310, 40, "Sponsored")
+    else:
+        pdfmetrics.registerFont(TTFont('Castellar', r'C:\Windows\Fonts\STENCIL.TTF'))
+        c.setFont("Castellar", 50)
+        c.setFillColor(colors.HexColor("#000000"))  # LimeGreen
+        c.drawString(360, 40, "PAID")
 
     c.save()
     pdf_buffer.seek(0)
@@ -219,6 +223,8 @@ def send_signup_message(username: str, user_email: str):
         except smtplib.SMTPException as e:
             print("Encountered smtp error :", e)
             break
+        except ssl.SSLError as e:
+            print("Encountered ssl error :", e)
         except socket.gaierror as e:
             print("there is an error:", e)
             breaks += 1
@@ -266,6 +272,8 @@ def send_password_reset_message(username: str, user_email: str):
         except smtplib.SMTPException as e:
             print("Encountered smtp error :", e)
             break
+        except ssl.SSLError as e:
+            print("Encountered ssl error :", e)
         except socket.gaierror as e:
             print("there is an error:", e)
             breaks += 1
@@ -277,12 +285,12 @@ def send_password_reset_message(username: str, user_email: str):
             break
 
 
-def send_receipt(user_data: dict, details: list):
+def send_receipt(receipt_no: str, user_data: dict, details: list, spons :bool=False):
     name, phone = user_data.get("users_name"), user_data.get("phone_no")
     email, reg = user_data.get("email"), user_data.get("reg_no")
     if not (name and phone and email and reg):
         raise MissingDetail
-    receipt_pdf = create_receipt_pdf2(99, transactions=details, name=name, phone=phone, email=email, reg=reg)
+    receipt_pdf = create_receipt_pdf2(receipt_no, transactions=details, name=name, phone=phone, email=email, reg=reg, sponsored=spons)
 
     msg_subject = "Payment receipt"
     html_content = touch_letter("receipt.html", name, "")
@@ -312,6 +320,8 @@ def send_receipt(user_data: dict, details: list):
         except smtplib.SMTPException as e:
             print("Encountered smtp error :", e)
             break
+        except ssl.SSLError as e:
+            print("Encountered ssl error :", e)
         except socket.gaierror as e:
             print("there is an error:", e)
             breaks += 1
@@ -321,6 +331,7 @@ def send_receipt(user_data: dict, details: list):
         else:
             print("An email has been sent")
             break
+    return receipt_pdf
 
 
 # send_signup_message("test_user", "opolopothings@gmail.com")

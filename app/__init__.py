@@ -7,7 +7,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine, text
 
 
-def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("HOST")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
+def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("PORT")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
     try:
         # Connect to default postgres database
         conn = psycopg2.connect(dbname='postgres', user=user, password=password, host=host, port=port)
@@ -30,7 +30,7 @@ def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HO
         print(f"❌ Failed to create database: {e}")
 
 
-engine = create_engine(os.getenv("DATABASE_URL"))  # Replace with your actual URL
+engine = create_engine(os.getenv("Internal Database URL"))  # Replace with your actual URL
 
 def reset_database():
     with engine.connect() as conn:
@@ -58,9 +58,8 @@ def reset_database():
 
 
 def create_app():
-
-    create_postgres_db_if_not_exists(os.getenv("DBNAME"), os.getenv("DB_USER"), os.getenv("DB_PASSWORD")) #("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
     load_dotenv()
+    create_postgres_db_if_not_exists(os.getenv("DBNAME"), os.getenv("DB_USER"), os.getenv("DB_PASSWORD")) #("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
     # reset_database()
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv("FLASK_APP_SECRET_KEY")
