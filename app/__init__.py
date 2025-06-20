@@ -30,7 +30,7 @@ def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HO
         print(f"❌ Failed to create database: {e}")
 
 
-engine = create_engine(os.getenv("Internal Database URL"))  # Replace with your actual URL
+engine = create_engine(os.getenv("DATABASE_URL"))  # Replace with your actual URL
 
 def reset_database():
     with engine.connect() as conn:
