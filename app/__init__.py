@@ -7,7 +7,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy import create_engine, text
 
 
-def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("PORT")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
+def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("DB_PORT")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
     try:
         # Connect to default postgres database
         conn = psycopg2.connect(dbname='postgres', user=user, password=password, host=host, port=port)
