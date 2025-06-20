@@ -2,10 +2,7 @@ import re
 import uuid
 import requests
 import sqlalchemy
-from io import BytesIO
 from pprint import pprint
-
-from pylint.lint import save_results
 
 # from run import app
 from app.models import db

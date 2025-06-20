@@ -5,7 +5,6 @@ import requests
 import pandas as pd
 from io import BytesIO
 from config import Config
-from sqlalchemy import func
 from threading import Thread
 from datetime import datetime
 from .errors import UserNotFoundError
@@ -18,7 +17,6 @@ from services.db_services import move_signee, update_action, update_payment, ini
 from services.db_services import post_payment_executions, post_webhook_process, exists_in_models
 from services.account_services import send_signup_message, verify_email, send_password_reset_message
 from .models import db, All, Payment, Signee, Student, Sponsored, Paper, SystemData, Scholarship, Attempt
-from services.account_services import send_receipt
 
 
 def register_routes(app):
