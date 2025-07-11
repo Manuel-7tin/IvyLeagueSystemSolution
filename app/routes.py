@@ -527,6 +527,7 @@ def register_routes(app):
                                    )
                     update_action(data.get("email"), "Registered a course.", operation_details)
                 except Exception as e:
+                    print(e)
                     return jsonify(
                         error={
                             "Unknown Error": f"Error message: [{e}].",
