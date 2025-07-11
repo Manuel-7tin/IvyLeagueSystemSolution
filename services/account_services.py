@@ -173,12 +173,12 @@ def create_receipt_pdf2(num: str, watermark_img="resource/ivyleague-logo.jpg", *
     font_path = os.path.join(base_dir, r'resource\fonts')
     # Paid stamp
     if kwargs.get("sponsored"):
-        pdfmetrics.registerFont(TTFont('baskvill', fr'{font_path}\BASKVILL.TTF'))
+        pdfmetrics.registerFont(TTFont('baskvill', fr'{font_path}/BASKVILL.TTF'))
         c.setFont("baskvill", 40)
         c.setFillColor(colors.HexColor("#000000"))  # LimeGreen
         c.drawString(310, 40, "Sponsored")
     else:
-        pdfmetrics.registerFont(TTFont('Castellar', fr'{font_path}\STENCIL.TTF'))
+        pdfmetrics.registerFont(TTFont('Castellar', fr'{font_path}/STENCIL.TTF'))
         c.setFont("Castellar", 50)
         c.setFillColor(colors.HexColor("#000000"))  # LimeGreen
         c.drawString(360, 40, "PAID")
