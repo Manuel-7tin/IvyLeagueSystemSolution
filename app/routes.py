@@ -491,51 +491,48 @@ def register_routes(app):
                 #         "message": "Registration successful",
                 #     }), 201
             elif user_type.lower() == "student":
-                # try:
-                student = db.session.execute(db.select(Student).where(Student.reg_no == data.get("reg_no"))).scalar()
-                for j in sponsorship.papers:
-                    if j in [paper.code for paper in student.papers]:
+                try:
+                    student = db.session.execute(db.select(Student).where(Student.reg_no == data.get("reg_no"))).scalar()
+                    for j in sponsorship.papers:
+                        if j in [paper.code for paper in student.papers]:
+                            return  jsonify(
+                                error={
+                                    "User Error": f"You are already taking {j}, you can't take it twice concurrently. Contact Admin for support."
+                                }
+                            ), 404
+                    if (len(sponsorship.papers) + len(student.papers)) > 4:
                         return jsonify(
                             error={
-                                "User Error": f"You are already taking {j}, you can't take it twice concurrently. Contact Admin for support."
+                                "Error": "User cannot register more than four papers in a diet.",
                             }
-                        ), 404
-                if (len(sponsorship.papers) + len(student.papers)) > 4:
+                        ), 409
+                    student.sponsored = True
+                    student.sponsors = sponsorship.company
+                    student.sponsored_papers = ",".join([sponsored_paper.split("-")[0] for sponsored_paper in sponsorship.papers])
+                    student.employment_status = "Fully/Self employed"
+                    student.papers.extend(sponsored_papers)  # Relevant ones in the absence of sponsors
+                    student.total_fee += sum([sponsored_paper.price for sponsored_paper in sponsored_papers])  # Relevant ones in the absence of sponsors
+                    student.amount_paid += sum(
+                        [sponsored_paper.price for sponsored_paper in sponsored_papers])  # Relevant ones in the absence of sponsors
+                    sponsorship.used = True
+                    db.session.commit()
+                    operation_details = f"User registered a new course, they were a student already, courses are sponsored, [{sponsorship.papers}]"
+                    update_payment(sponsored=True,
+                                   email=data.get("email"),
+                                   spons_details=sponsorship,
+                                   context=sponsorship.papers,
+                                   purpose="Tuition",
+                                   user_info=[student.first_name, student.last_name, student.phone_number,
+                                              data.get("email"), student.reg_no],
+                                   )
+                    update_action(data.get("email"), "Registered a course.", operation_details)
+                except Exception as e:
+                    print(e)
                     return jsonify(
                         error={
-                            "Error": "User cannot register more than four papers in a diet.",
+                            "Unknown Error": f"Error message: [{e}].",
                         }
                     ), 409
-                student.sponsored = True
-                student.sponsors = sponsorship.company
-                student.sponsored_papers = ",".join(
-                    [sponsored_paper.split("-")[0] for sponsored_paper in sponsorship.papers])
-                student.employment_status = "Fully/Self employed"
-                student.papers.extend(sponsored_papers)  # Relevant ones in the absence of sponsors
-                student.total_fee += sum([sponsored_paper.price for sponsored_paper in
-                                          sponsored_papers])  # Relevant ones in the absence of sponsors
-                student.amount_paid += sum(
-                    [sponsored_paper.price for sponsored_paper in
-                     sponsored_papers])  # Relevant ones in the absence of sponsors
-                sponsorship.used = True
-                db.session.commit()
-                operation_details = f"User registered a new course, they were a student already, courses are sponsored, [{sponsorship.papers}]"
-                update_payment(sponsored=True,
-                               email=data.get("email"),
-                               spons_details=sponsorship,
-                               context=sponsorship.papers,
-                               purpose="Tuition",
-                               user_info=[student.first_name, student.last_name, student.phone_number,
-                                          data.get("email"), student.reg_no],
-                               )
-                update_action(data.get("email"), "Registered a course.", operation_details)
-                # except Exception as e:
-                #     print(e)
-                #     return jsonify(
-                #         error={
-                #             "Unknown Error": f"Error message: [{e}].",
-                #         }
-                #     ), 409
                 # else:
             elif user_type == "old student":
                 pass

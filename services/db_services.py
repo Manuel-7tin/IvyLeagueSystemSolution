@@ -398,6 +398,7 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
             operation_details = f"User registered a new course, they were a student already, payments made, [{attempt.context} | Refr: {reference}]"
             update_action(email, "Registered a course.", operation_details)
         except Exception as e:
+            print(e)
             return jsonify(
                 error={"Error in post payment func": f"Unknown error {e}"}
             ), 400
