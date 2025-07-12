@@ -171,7 +171,7 @@ def create_receipt_pdf2(num: str, watermark_img="resource/ivyleague-logo.jpg", *
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = os.path.dirname(current_dir)
-    font_path = os.path.join(base_dir, 'resources', 'fonts')
+    font_path = os.path.join(base_dir, 'resource', 'fonts')
     # Paid stamp
     if kwargs.get("sponsored"):
         pdfmetrics.registerFont(TTFont('baskvill', fr'{font_path}/BASKVILL.TTF'))
