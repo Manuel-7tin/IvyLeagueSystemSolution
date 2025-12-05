@@ -84,7 +84,8 @@ def create_app():
 
 
     CORS(app, resources={r"/api/*": {
-        "origins": ["http://localhost:5174", "http://localhost:5173", "https://bear-deciding-wren.ngrok-free.app", "https://studentportal.ivyleaguenigeria.com"],  # Or specify your frontend domain
+        "origins": ["http://localhost:5174", "http://localhost:5173", "https://bear-deciding-wren.ngrok-free.app",
+                    "https://studentportal.ivyleaguenigeria.com", "https://preview.lms.ivyleaguenigeria.com", "https://preview.staff.ivyleaguenigeria.com"],  # Or specify your frontend domain
         "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"],
         "allow_headers": ["Content-Type", "Access", "Authorization", "ngrok-skip-browser-warning"],
         "supports_credentials": True
