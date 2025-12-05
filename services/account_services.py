@@ -21,8 +21,8 @@ from datetime import datetime, timedelta, timezone
 
 # load_dotenv()
 print(os.getenv("PY_ENV"))
-mail_sender = os.getenv("EMAIL_ADDR")
-password = os.getenv("EMAIL_PASSWORD")
+MAIL_SENDER = os.getenv("EMAIL_ADDR")
+PASSWORD = os.getenv("EMAIL_PASSWORD")
 
 
 def generate_confirmation_token(email, time):
@@ -206,7 +206,7 @@ def send_signup_message(username: str, user_email: str):
 
     # 4. Send the letter generated in step 3 to that person's email address.
     message = EmailMessage()
-    message["From"] = f"Ivy League Updates <{mail_sender}>"
+    message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
     message["To"] = user_email
     message["Subject"] = msg_subject
     # attach_image(images, message, image_cid)
@@ -219,8 +219,8 @@ def send_signup_message(username: str, user_email: str):
     while True:
         try:
             with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
-                mail.login(user=mail_sender, password=password)
-                mail.sendmail(from_addr=mail_sender, to_addrs=user_email, msg=message.as_string())
+                mail.login(user=MAIL_SENDER, password=PASSWORD)
+                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
         except smtplib.SMTPConnectError as f:
             print("error as", f)
         except smtplib.SMTPException as e:
@@ -257,7 +257,7 @@ def send_password_reset_message(username: str, user_email: str):
 
     # 4. Send the letter generated in step 3 to that person's email address.
     message = EmailMessage()
-    message["From"] = f"Ivy League Updates <{mail_sender}>"
+    message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
     message["To"] = user_email
     message["Subject"] = msg_subject
     message.add_alternative(html_content, subtype='html')
@@ -268,8 +268,8 @@ def send_password_reset_message(username: str, user_email: str):
     while True:
         try:
             with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
-                mail.login(user=mail_sender, password=password)
-                mail.sendmail(from_addr=mail_sender, to_addrs=user_email, msg=message.as_string())
+                mail.login(user=MAIL_SENDER, password=PASSWORD)
+                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
         except smtplib.SMTPConnectError as f:
             print("error as", f)
         except smtplib.SMTPException as e:
@@ -301,7 +301,7 @@ def send_receipt(receipt_no: str, user_data: dict, details: list, spons :bool=Fa
 
     # 4. Send the letter generated in step 3 to that person's email address.
     message = EmailMessage()
-    message["From"] = f"Ivy League Updates <{mail_sender}>"
+    message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
     message["To"] = user_email
     message["Subject"] = msg_subject
     message.add_alternative(html_content, subtype='html')
@@ -316,8 +316,8 @@ def send_receipt(receipt_no: str, user_data: dict, details: list, spons :bool=Fa
     while True:
         try:
             with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
-                mail.login(user=mail_sender, password=password)
-                mail.sendmail(from_addr=mail_sender, to_addrs=user_email, msg=message.as_string())
+                mail.login(user=MAIL_SENDER, password=PASSWORD)
+                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
         except smtplib.SMTPConnectError as f:
             print("error as", f)
         except smtplib.SMTPException as e:
@@ -335,6 +335,58 @@ def send_receipt(receipt_no: str, user_data: dict, details: list, spons :bool=Fa
             print("An email has been sent")
             break
     return receipt_pdf
+
+
+def send_staff_creation_message(username: str, user_email: str, type_: str):
+    token = generate_confirmation_token(user_email, 48)
+    if type_ == "initialize-admin":
+        msg_subject = "You've Been Chosen as an Admin!"
+        link = f"{os.getenv('FRONTEND_URL')}/accounts/complete-admin?token={token}"
+    else:
+        msg_subject = "Welcome to Ivy League LMS"
+        link = f"{os.getenv('FRONTEND_URL')}/accounts/dashboard"
+    print(link)
+
+    try:
+        html_content = touch_letter(f"{type_}.html", username, link)
+    except FileNotFoundError:
+        print(f"Error: The signup html file was not found.")
+        return 0
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return 0
+
+    # 4. Send the letter generated in step 3 to that person's email address.
+    message = EmailMessage()
+    message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
+    message["To"] = user_email
+    message["Subject"] = msg_subject
+    message.add_alternative(html_content, subtype='html')
+    message.add_header("Reply-to", "updates@ivyleaguenigeria.com")
+
+    context = ssl.create_default_context()
+    breaks = 0
+    while True:
+        try:
+            with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
+                mail.login(user=MAIL_SENDER, password=PASSWORD)
+                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
+        except smtplib.SMTPConnectError as f:
+            print("error as", f)
+        except smtplib.SMTPException as e:
+            print("Encountered smtp error :", e)
+            break
+        except ssl.SSLError as e:
+            print("Encountered ssl error :", e)
+        except socket.gaierror as e:
+            print("there is an error:", e)
+            breaks += 1
+            time.sleep(3)
+            if breaks > 4:
+                break
+        else:
+            print("An email has been sent")
+            break
 
 
 # send_signup_message("test_user", "opolopothings@gmail.com")

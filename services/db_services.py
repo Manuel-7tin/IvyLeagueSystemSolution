@@ -1,7 +1,11 @@
 import re
+import io
 import uuid
+# import base64
 import requests
 import sqlalchemy
+import pandas as pd
+# from PIL import Image
 from pprint import pprint
 
 # from run import app
@@ -10,10 +14,14 @@ from config import Config
 from flask import jsonify, copy_current_request_context
 from datetime import datetime
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 from app.errors import UserNotFoundError
+from sqlalchemy.exc import SQLAlchemyError
 from requests.exceptions import ConnectionError
+from services.other_services import store_pfp
 from services.account_services import send_receipt
-from app.models import Attempt, Student, Paper, Action, Signee, Payment, Sponsored, Scholarship
+from app.models import Attempt, Student, Paper, Action, Signee, Payment, Sponsored, Scholarship, Enrollment, Diet
+from app.models import StaffActivity
 
 
 def encode_year(year: int, a=117, b=53, m=10000):
@@ -65,6 +73,18 @@ def log_attempt(data: dict, purpose: str, ref: str):
     db.session.commit()
 
 
+def log_staff_activity(**kwargs):
+    new_activity = StaffActivity(
+        title = kwargs.get("title"),
+        description = kwargs.get("desc"),
+        time = kwargs.get("time") or datetime.now(),
+        staff = kwargs.get("staff"),
+        object_id=kwargs.get("object_id"),
+        object_type = kwargs.get("obj"),
+    )
+    db.session.add(new_activity)
+    db.session.commit()
+
 def generate_payment_reference(prefix: str):
     unique_part = uuid.uuid4().hex  # 32-char hex string
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -84,14 +104,20 @@ def calculate_payment_status(full_payment: int, paid:int):
 def calculate_discount_amount(discount: list, papers: list):
     amount = 0
     try:
-        discount_papers = db.session.query(Paper).filter(Paper.code.in_(papers)).all()
+        discount_papers = db.session.execute(db.select(Paper).where(Paper.code.in_(papers))).scalars().all()
+        unique_by_code = {}
+        for paper in discount_papers:
+            if paper.code not in unique_by_code:
+                unique_by_code[paper.code] = paper
+        distinct_papers = list(unique_by_code.values())
     except Exception as e:
         print(f"error: {e}, {discount}, {papers}")
         return jsonify({
             "error": f"{e}, {discount}, {papers}"
         })
-    for i in range(len(discount_papers)):
-        amount += discount_papers[i].price * (discount[i]/100)
+
+    for i in range(len(distinct_papers)):
+        amount += distinct_papers[i].price * (discount[i]/100)
     return amount
 
 # def store_receipt(no: str, reg: str, student_id: int, file: BytesIO):
@@ -128,14 +154,16 @@ def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_detail
         sponsor = spons_details.company
         sponsored_papers = ",".join([paper.split("-")[0] for paper in spons_details.papers])
         employment = "Fully/Self employed"
-        papers = db.session.query(Paper).filter(Paper.code.in_(spons_details.papers)).all()
+        papers = db.session.execute(db.select(Paper).where(Paper.code.in_(spons_details.papers))).scalars().all()
         paid = sum([paper.price for paper in papers])
+        diet = db.session.execute(db.select(Diet).where(Diet.name == spons_details.diet_name)).scalar()
     else:
         sponsor = None
         sponsored_papers = ""
         employment = info.get("employed")
-        papers = db.session.query(Paper).filter(Paper.code.in_(info.get("papers"))).all()
+        papers = db.session.execute(db.select(Paper).where(Paper.code.in_(info.get("papers")))).scalars().all()
         paid = int(paid/100)
+        diet = db.session.execute(db.select(Diet).where(Diet.name == info.get("diet_name"))).scalar()
 
     print(info)
     full_payment = sum([paper.price for paper in papers])
@@ -148,6 +176,42 @@ def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_detail
     if not signee:
         print(f"User not found, {email}")
         raise UserNotFoundError
+    # if isinstance(info.get('profile_pic'), str):
+    # match = re.match(r"data:image/[^;]+;base64,(.*)", info.get('profile_pic'))
+    # if match:
+    #     base64_data = match.group(1)
+    #     profile_picture = base64.b64decode(base64_data)
+    # else:
+    #     profile_picture = None
+    #
+    #
+    # if profile_picture:
+    #     try:
+    #         image = Image.open(io.BytesIO(profile_picture))
+    #         image_format = image.format.lower()  # 'png', 'jpeg', etc.
+    #         content_type = f"image/{image_format}"
+    #
+    #         email_username = email.split('@')[0]
+    #         extension = 'jpg' if image_format == 'jpeg' else image_format
+    #         s3_key = f"profile-pics/{email_username}.{extension}"
+    #
+    #         # Upload to S3
+    #         s3.put_object(
+    #             Bucket="lms-mini-storage",
+    #             Key=s3_key,
+    #             Body=profile_picture,
+    #             ContentType=content_type
+    #         )
+    #         pfp_url = f"https://lms-mini-storage.s3.eu-north-1.amazonaws.com/{s3_key}"
+    #         print("Upload successful!")
+    #     except Exception as e:
+    #         print(f"Image processing/upload failed: {e}")
+    #         raise ValueError
+    # else:
+    #     pfp_url = None
+
+    pfp_url = store_pfp(info.get('profile_pic'), email)
+
     new_student = Student(
         first_name=signee.first_name,
         last_name=signee.last_name,
@@ -157,9 +221,22 @@ def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_detail
         password=signee.password,
         acca_reg_no=acca_reg_no,
         birth_date=signee.birth_date,
+        profile_photo=pfp_url,
         phone_number=signee.phone_number,
         gender=signee.gender,
-        joined=signee.created_at,
+        joined=signee.created_at,#r
+        house_address=info.get("address"),
+        referral_source=info.get("referral_source"),
+        referrer=info.get("friend"),
+        employment_status=employment,
+        oxford_brookes=info.get("oxford"),
+        accurate_data=info.get("accuracy"),
+        alp_consent=info.get("alp_consent"),
+        terms_and_cond=info.get("terms"),
+    )
+    print("diet assigned to enrollment:", diet, diet.id)
+    new_enrollment = Enrollment(
+        student_reg_no=f"1331{year_code:04d}{serial_code:04d}",
         new_student=True,
         sponsored=sponsored,
         sponsor=sponsor,
@@ -167,28 +244,30 @@ def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_detail
         total_fee=full_payment,
         amount_paid=paid,
         payment_status=payment_status,
-        house_address=info.get("address"),
-        referral_source=info.get("referral_source"),
-        referrer=info.get("friend"),
-        employment_status=employment,
         discount=sum(info.get("discount", [0])) / len(info.get("discount", [0])) if discount_amount > 0 else 0,
         discount_papers=info.get("discount_papers", []),
-        oxford_brookes=info.get("oxford"),
-        accurate_data=info.get("accuracy"),
-        alp_consent=info.get("alp_consent"),
-        terms_and_cond=info.get("terms"),
         refund=paid-full_payment if payment_status == "Overpaid" else 0,
         receivable=full_payment-paid if payment_status == "Partly paid" else 0,
         papers=papers,
+        student=new_student,
+        diet=diet
     )
+
     db.session.add(new_student)
+    db.session.add(new_enrollment)
     print("Deleting signee")
     db.session.delete(signee)
     transaction_details = []
-    scholarships = db.session.query(Scholarship).filter_by(email=email).all()
+    # scholarships = db.session.query(Scholarship).filter_by(email=email).all()
+    try:
+        scholarships = db.session.execute(db.select(Scholarship).where(Scholarship.email == email)).scalars().all()
+    except SQLAlchemyError as e:
+        print("❌ Error while querying scholarships:", str(e))
+        # Optionally log or re-raise the error
+        scholarships = []
     if info.get("discount_papers") and scholarships:
         for scholarship in scholarships:
-            if scholarship.paper in info.get("discount_papers"):
+            if scholarship.paper in info.get("discount_papers") and scholarship.diet_name == diet.name:
                 transaction_details.append({
                     "purpose": "Discount",
                     "desc": f"{scholarship.discount}% discount on {scholarship.paper}",
@@ -214,10 +293,11 @@ def update_action(email, action, details):
 
 def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_details: any=None, **kwargs):
     student = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
+
     if len(kwargs.get("context", [])) < 1 or not kwargs.get("purpose") or len(kwargs.get("user_info", [])) != 5:
         raise ValueError # Create custom error later
 
-    max_id = db.session.query(func.max(Payment.id)).scalar() or 0
+    max_id = db.session.execute(db.select(func.max(Payment.id))).scalar() or 0
     new_receipt_no = f"RCPT-{max_id + 1:06d}"
     user_details = kwargs.get("user_info")
     user_info = {
@@ -227,7 +307,7 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
         "reg_no": user_details[4]
     }
     if sponsored:
-        papers = db.session.query(Paper).filter(Paper.code.in_(spons_details.papers)).all()
+        papers = db.session.execute(db.select(Paper).where(Paper.code.in_(spons_details.papers))).scalars().all()
         transaction_details = [{
             "purpose": kwargs.get("purpose"),
             "desc": f"{sponsored_paper.name} Lectures",
@@ -235,6 +315,12 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
         } for sponsored_paper in papers]
         from pprint import pprint
         pprint(transaction_details)
+        stmt = (
+            db.select(Enrollment)
+            .join(Diet)  # Explicit join to the related Diet table
+            .where(Diet.name == spons_details.diet_name)
+        )
+        enrollment = db.session.execute(stmt).scalar()
 
         receipt_file = send_receipt(receipt_no=new_receipt_no, user_data=user_info, details=transaction_details, spons=True)
         new_payment = Payment(
@@ -252,20 +338,27 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
             paid_at=datetime(2060, 12, 31),
             receipt_number=new_receipt_no,
             receipt=receipt_file.getvalue(),
-            student=student
+            enrollment=enrollment
         )
     else:
         from pprint import pprint
         print("in", type(payment_data))
         pprint(payment_data)
+        payment_metadata = payment_data.get("metadata")
         skip_log = False if payment_data.get("log") else True
         transaction_details = [{
             "purpose": kwargs.get("purpose"),
             "desc": f"{paper.name} Lectures",
             "amount": f"{paper.price}",
-        } for paper in db.session.query(Paper).filter(Paper.code.in_(kwargs.get("context"))).all()]
+        } for paper in db.session.execute(db.select(Paper).where(Paper.code.in_(kwargs.get("context")))).scalars().all()]
         other_transactions = kwargs.get("discount_transactions")
         other_transactions and transaction_details.extend(other_transactions) # will append if other_trans not None
+        stmt = (
+            db.select(Enrollment)
+            .join(Diet)  # Explicit join to the related Diet table
+            .where(Diet.name == payment_metadata.get("diet_name"))
+        )
+        enrollment = db.session.execute(stmt).scalar()
 
 
         receipt_file = send_receipt(receipt_no=new_receipt_no, user_data=user_info, details=transaction_details)
@@ -289,19 +382,20 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
             paid_at=payment_data.get("paid_at"),
             receipt_number=new_receipt_no,
             receipt=receipt_file.getvalue(),
-            student=student
+            enrollment=enrollment
         )
     db.session.add(new_payment)
     db.session.commit()
 
 
-def insert_sponsored_row(firstname, lastname, org, papers, token):
+def insert_sponsored_row(firstname, lastname, org, papers, token, diet_name):
     new_sponsor = Sponsored(
         first_name=firstname,
         last_name=lastname,
         company=org,
         papers=papers,
-        token=token
+        token=token,
+        diet_name=diet_name
     )
     db.session.add(new_sponsor)
     db.session.commit()
@@ -310,19 +404,21 @@ def insert_sponsored_row(firstname, lastname, org, papers, token):
 def post_payment_executions(reference: str, payment_data: dict) -> tuple:
     """ This function is currently only capable of processing payments for registrations """
     # attempt = db.session.query(Attempt).filter_by(payment_reference=reference).first()
-    attempt = db.session.query(Attempt).filter_by(payment_reference=reference).scalar()
+    attempt = db.session.execute(db.select(Attempt).where(Attempt.payment_reference == reference)).scalar()
     if not attempt:
         return jsonify(
             error={"Error": f"Unknown user reference."}
         ), 400
     print(reference)
+    payment_metadata = payment_data.get("metadata")
     user_type = attempt.user_type
     email = attempt.email
     amount_paid = payment_data["amount"]
     if user_type.lower() == "signee":
         try:
             res = move_signee(attempt.other_data, sponsored=False, paid=amount_paid, email=email)
-            user = db.session.query(Student).filter_by(email=email).scalar()
+            user = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
+            currently_enrolled = [paper for entry in user.enrollments if entry.diet.completion_date > datetime.now() for paper in entry.papers]
             update_payment(sponsored=False,
                            email=email,
                            payment_data=payment_data,
@@ -347,39 +443,46 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
                 "firstname": user.first_name,
                 "lastname": user.last_name,
                 "email": user.email,
-                "sex": user.gender,
+                "gender": user.gender,
+                "profile_pic": user.profile_photo, #base64.b64encode(user.profile_photo).decode('utf-8'),
                 "reg_no": user.reg_no,
                 "acca_reg_no": user.acca_reg_no,
-                "papers": [{paper.code: paper.name} for paper in user.papers],
+                "papers": [{paper.code: paper.name} for paper in currently_enrolled],
                 "user_status": "student",
             }), 200
     elif user_type.lower() == "student":
         try:
-            student = db.session.query(Student).filter_by(email=email).scalar()
-            papers = db.session.query(Paper).filter(Paper.code.in_(attempt.other_data.get("papers"))).all()
+            student = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
+            stmt = (
+                db.select(Enrollment)
+                .join(Diet)  # Explicit join to the related Diet table
+                .where(Diet.name == payment_metadata.get("diet_name"))
+            )
+            enrollment = db.session.execute(stmt).scalar()
+            papers = db.session.execute(db.select(Paper).where(Paper.code.in_(attempt.other_data.get("papers")))).scalars().all()
 
             discount_amount = calculate_discount_amount(attempt.other_data.get("discount", []), attempt.other_data.get("discount_papers", []))
             full_payment = sum([paper.price for paper in papers])
             full_payment -= discount_amount
             retaking = attempt.other_data.get("retaking")
 
-            student.papers.extend(papers) # Relevant ones in the absence of sponsors
-            student.total_fee += full_payment # Relevant ones in the absence of sponsors
-            student.amount_paid += amount_paid/100 # Relevant ones in the absence of sponsors
-            payment_status = calculate_payment_status(student.total_fee, student.amount_paid)
-            student.payment_status = payment_status
-            student.retake = retaking if not student.retake else student.retake
-            student.discount += sum(attempt.other_data.get("discount", [0])) / len(attempt.other_data.get("discount", [])) if discount_amount > 0 else 0
-            student.discount_papers = attempt.other_data.get("discount_papers")
-            student.refund=student.amount_paid-student.total_fee if payment_status == "Overpaid" else 0,
-            student.receivable=student.total_fee-student.amount_paid if payment_status == "Partly paid" else 0,
+            enrollment.papers.extend(papers) # Relevant ones in the absence of sponsors
+            enrollment.total_fee += full_payment # Relevant ones in the absence of sponsors
+            enrollment.amount_paid += amount_paid/100 # Relevant ones in the absence of sponsors
+            payment_status = calculate_payment_status(enrollment.total_fee, enrollment.amount_paid)
+            enrollment.payment_status = payment_status
+            enrollment.retake = retaking if not enrollment.retake else enrollment.retake
+            enrollment.discount += sum(attempt.other_data.get("discount", [0])) / len(attempt.other_data.get("discount", [])) if discount_amount > 0 else 0
+            enrollment.discount_papers = attempt.other_data.get("discount_papers")
+            enrollment.refund=enrollment.amount_paid-enrollment.total_fee if payment_status == "Overpaid" else 0,
+            enrollment.receivable=enrollment.total_fee-enrollment.amount_paid if payment_status == "Partly paid" else 0,
             # db.session.commit()
 
             transaction_discounts = []
-            scholarships = db.session.query(Scholarship).filter_by(email=attempt.email).all()
+            scholarships = db.session.execute(db.select(Scholarship).where(Scholarship.email == attempt.email)).scalars().all()
             if attempt.other_data.get("discount_papers") and scholarships:
                 for scholarship in scholarships:
-                    if scholarship.paper in attempt.other_data.get("discount_papers"):
+                    if scholarship.paper in attempt.other_data.get("discount_papers") and scholarship.diet_name == payment_metadata.get("diet_name"):
                         transaction_discounts.append({
                             "purpose": "Discount",
                             "desc": f"{scholarship.discount}% discount on {scholarship.paper}",
@@ -405,16 +508,18 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
         else:
             db.session.delete(attempt)
             db.session.commit()
-            user = db.session.query(Student).filter_by(email=email).scalar()
+            user = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
+            currently_enrolled = [paper for entry in user.enrollments if entry.diet.completion_date > datetime.now() for paper in entry.papers]
             return jsonify({
                 "title": user.title,
                 "firstname": user.first_name,
                 "lastname": user.last_name,
                 "email": user.email,
-                "sex": user.gender,
+                "gender": user.gender,
+                "profile_pic": user.profile_photo, #base64.b64encode(user.profile_photo).decode('utf-8'),
                 "reg_no": user.reg_no,
                 "acca_reg_no": user.acca_reg_no,
-                "papers": [{paper.code: paper.name} for paper in user.papers],
+                "papers": [{paper.code: paper.name} for paper in currently_enrolled],
                 "user_status": "student",
 
             }), 200
@@ -464,7 +569,7 @@ def initialize_payment(data: dict, type_:str):
         "amount": amount * 100,  # Convert to kobo
         "email": email,
         "reference": reference_id,
-        # "metadata": {"cart_id": 398,}
+        "metadata": {"diet_name": data["user_data"].get("diet_name"),}
     }
 
     try:
@@ -497,7 +602,7 @@ def initialize_payment(data: dict, type_:str):
 def exists_in_models(type_, obj, *models):
     if type_ == "email":
         for model in models:
-            if db.session.query(model).filter_by(email=obj).scalar():
+            if db.session.execute(db.select(model).where(model.email == obj)).scalar():
                 return True, model
         return False
     else:
@@ -507,6 +612,73 @@ def exists_in_models(type_, obj, *models):
         return False
 
 
+def generate_student_data():
+    # Query all students
+    students = db.session.execute(db.select(Student)).scalars().all()
+
+    # Prepare data for DataFrame
+    data = []
+    for s in students:
+        total_paid = sum([entry.amount_paid for entry in s.enrollments])
+        total_owing = sum([entry.receivable for entry in s.enrollments])
+        total_owed = sum([entry.refund for entry in s.enrollments])
+        data.append({
+            "ID": s.id,
+            "Title": s.title,
+            "First Name": s.first_name,
+            "Last Name": s.last_name,
+            "Email": s.email,
+            "Registration Number": s.reg_no,
+            "Registration Date": s.reg_date,
+            "ACCA Reg No": s.acca_reg_no,
+            "Birth Date": s.birth_date,
+            "Phone Number": s.phone_number,
+            "Gender": s.gender,
+            "Joined": s.joined,
+            "Total Payments": total_paid,
+            "Total Receivables": total_owing,
+            "Total Owed": total_owed,
+            "House Address": s.house_address,
+            "Referral Source": s.referral_source,
+            "Referrer": s.referrer,
+            "Employment Status": s.employment_status,
+            "Oxford Brookes": s.oxford_brookes,
+            "Accurate Data": s.accurate_data,
+            "ALP Consent": s.alp_consent,
+            "Terms and Conditions": s.terms_and_cond,
+        })
+
+    # Create DataFrame
+    df = pd.DataFrame(data)
+
+    # Create an in-memory Excel file
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Students')
+
+    output.seek(0)
+    return output
+
+
+def staff_activities():
+    stmt = select(StaffActivity).options(joinedload(StaffActivity.staff))
+    activities = db.session.execute(stmt).scalars().all()
+    checked_activities = []
+    for activity in activities:
+        try:
+            checked_activities.append(
+                {
+                    "code": activity.staff.code,
+                    "title": activity.title,
+                    "description": activity.description,
+                    "staff_firstname": activity.staff.first_name,
+                    "time": activity.time,
+                    "object": activity.object_type,
+                }
+            )
+        except ZeroDivisionError:
+            pass
+    return checked_activities
 # with app.app_context():
 #     attempts = db.session.query(Attempt).filter(Attempt.payment_status == "pending").all()
 #     for attempt in attempts:

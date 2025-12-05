@@ -1,5 +1,12 @@
 [
     {
+        "subject": "Upload a profile picture",
+        "more_info": "",
+        "type": "file",
+        "options": [],
+        "key":  "profile_pic"
+    },
+    {
         "subject": "ACCA reg number",
         "more_info": "Enter 001 if you have not registered yet",
         "type": "short answer",

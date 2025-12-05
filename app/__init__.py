@@ -1,13 +1,17 @@
 import os
 import psycopg2
 from flask import Flask
+from flask_cors import CORS
 from dotenv import load_dotenv
+from flask_login import LoginManager
 from .models import db, Base, migrate
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+from app.routes import register_routes
 from sqlalchemy import create_engine, text
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+# from services.diet_version_manager import create_versioned_table_and_scheduler
 
 
-def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("DB_PORT")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
+def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("PORT")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
     try:
         # Connect to default postgres database
         conn = psycopg2.connect(dbname='postgres', user=user, password=password, host=host, port=port)
@@ -29,8 +33,9 @@ def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HO
     except Exception as e:
         print(f"❌ Failed to create database: {e}")
 
-
-engine = create_engine(os.getenv("DATABASE_URL"))  # Replace with your actual URL
+engine = create_engine(os.getenv("DATABASE_URL"))
+# engine = create_engine("postgresql://postgres:root@localhost:5432/ivyleague")  # Replace with your actual URL
+# login_manager = LoginManager()
 
 def reset_database():
     with engine.connect() as conn:
@@ -72,16 +77,16 @@ def create_app():
         # db.drop_all() # For development purposes
         db.create_all()
 
+    # create_versioned_table_and_scheduler(app)
+
     # Import and register routes
-    from app.routes import register_routes
     register_routes(app)
 
-    from flask_cors import CORS
 
     CORS(app, resources={r"/api/*": {
-        "origins": ["http://localhost:5173", "https://bear-deciding-wren.ngrok-free.app", "https://studentportal.ivyleaguenigeria.com"],  # Or specify your frontend domain
-        "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-        "allow_headers": ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+        "origins": ["http://localhost:5174", "http://localhost:5173", "https://bear-deciding-wren.ngrok-free.app", "https://studentportal.ivyleaguenigeria.com"],  # Or specify your frontend domain
+        "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE", "PATCH"],
+        "allow_headers": ["Content-Type", "Access", "Authorization", "ngrok-skip-browser-warning"],
         "supports_credentials": True
     }})  # Use specific origin instead of "*" in production
 
