@@ -69,6 +69,10 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv("FLASK_APP_SECRET_KEY")
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_pre_ping": True,  # checks if connection is alive
+        "pool_recycle": 1800,  # refresh every 30 mins
+    }
 
     db.init_app(app)
     migrate.init_app(app, db)
