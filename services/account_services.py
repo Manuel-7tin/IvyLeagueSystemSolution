@@ -1,3 +1,6 @@
+import tracemalloc
+tracemalloc.start()
+
 import os
 import ssl
 import jwt
@@ -190,6 +193,7 @@ def create_receipt_pdf2(num: str, watermark_img="resource/ivyleague-logo.jpg", *
 
 
 def send_signup_message(username: str, user_email: str):
+    snapshot1 = tracemalloc.take_snapshot()
     msg_subject = "Welcome to Ivy League Associates! Please Confirm Your Email"
     token = generate_confirmation_token(user_email, 24)
     link = f"{os.getenv('FRONTEND_URL')}/accounts/confirm-email?token={token}"
@@ -238,6 +242,14 @@ def send_signup_message(username: str, user_email: str):
         else:
             print("AN email has been sent")
             break
+        break
+    snapshot2 = tracemalloc.take_snapshot()
+    stats = snapshot2.compare_to(snapshot1, 'lineno')
+    # snapshot = tracemalloc.take_snapshot()
+    # top_stats = snapshot.statistics('lineno')
+
+    for stat in stats[:20]:
+        print(stat)
 
 
 def send_password_reset_message(username: str, user_email: str):
@@ -269,7 +281,8 @@ def send_password_reset_message(username: str, user_email: str):
         try:
             with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
                 mail.login(user=MAIL_SENDER, password=PASSWORD)
-                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
+                # mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
+                mail.send_message(message)
         except smtplib.SMTPConnectError as f:
             print("error as", f)
         except smtplib.SMTPException as e:
