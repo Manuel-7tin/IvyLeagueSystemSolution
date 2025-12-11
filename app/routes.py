@@ -266,7 +266,7 @@ def register_routes(app):
 
         if login_type == "email":
             # First check if user is an admin/staff
-            staff = db.session.execute(db.select(Staff).where(Staff.email == data.get("email"))).scalar()
+            staff = db.session.execute(db.select(Staff).where(Staff.email == data.get("email"))).scalar() #ACCount for operational error
             if staff: # User is a staff
                 password = data.get("password")
                 if check_password_hash(staff.password, password):
@@ -841,10 +841,13 @@ def register_routes(app):
         #     ), 403
         token = request.args.get("token")
         if token is None:
+            print("TOken is none and confirm email has been called. #Debug")
             data = request.get_json()
             user = db.session.execute(db.select(Signee).where(Signee.email == data.get("email"))).scalar()
             if not user:
+                print("No User found. #Debug")
                 return jsonify(error={"In-Existent User": "Email doesn't exist"}), 400
+            print("User found and email is a to be drafted. #Debug")
             send_signup_message("User", data.get("email"))
             return jsonify({"message": "Check your email to confirm your account."}), 200
         else:
@@ -2285,7 +2288,10 @@ def register_routes(app):
 
     @app.route('/api/v1/get-token', methods=['GET'])
     def give():
-        return jsonify({"toks": generate_token(None, None, True)})
+        print(request.args.get("paper"))
+        return jsonify({"oi": 3})
+        # return jsonify({"toks": generate_token(None, None, True)})
+
 
     try:
         with app.app_context():
@@ -2407,7 +2413,7 @@ def register_routes(app):
                 first_name="Ayomide",
                 last_name="Ojutalayo",
                 email="ojutalayoayomide21@gmail.com",
-                phone_number="0801234566789",
+                phone_number="08012345667",
                 password="pbkdf2:sha256:1000000$pjWHjSTC$31dab95672358c4626cda6521d8f195606edbe58f6facc350eb06b3c8a616edb",
                 # password=generate_password_hash(
                 #         "acca1234",
@@ -2428,7 +2434,7 @@ def register_routes(app):
                 first_name="John",
                 last_name="Doe",
                 email="ivyleagueassociates@gmail.com",
-                phone_number="0801234566789",
+                phone_number="08034566789",
                 password=generate_password_hash(
                         "Acca1234",
                         method='pbkdf2:sha256',

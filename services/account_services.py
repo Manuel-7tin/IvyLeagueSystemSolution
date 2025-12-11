@@ -253,11 +253,13 @@ def send_signup_message(username: str, user_email: str):
 
 
 def send_password_reset_message(username: str, user_email: str):
+    print("Func called successfully. #Debug")
     msg_subject = "Reset Your Ivy League Associates LMS Password"
     token = generate_confirmation_token(user_email, 0.168) # Token expires after 10 minutes
     link = f"{os.getenv('FRONTEND_URL')}/accounts/reset-password?token={token}"
     print(link)
 
+    print("Trying to read lettr. #Debug")
     try:
         html_content = touch_letter("reset-password.html", username, link)
     except FileNotFoundError:
@@ -268,6 +270,7 @@ def send_password_reset_message(username: str, user_email: str):
         return 0
 
     # 4. Send the letter generated in step 3 to that person's email address.
+    print("COnstructing messaage. #Debug")
     message = EmailMessage()
     message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
     message["To"] = user_email
@@ -278,6 +281,7 @@ def send_password_reset_message(username: str, user_email: str):
     context = ssl.create_default_context()
     breaks = 0
     while True:
+        print("IN while baudo send. #Debug")
         try:
             with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
                 mail.login(user=MAIL_SENDER, password=PASSWORD)
