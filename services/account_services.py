@@ -230,8 +230,8 @@ def send_signup_message(username: str, user_email: str):
 #                 print("Logging in. #Debug")
                 mail.login(user=MAIL_SENDER, password=PASSWORD)
 #                 print("Actually sending. #Debug")
-                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
-                # mail.send_message(message)
+#                 mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
+                mail.send_message(message)
         except smtplib.SMTPConnectError as f:
             print("error as", f)
         except smtplib.SMTPException as e:
