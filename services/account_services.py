@@ -193,7 +193,7 @@ def create_receipt_pdf2(num: str, watermark_img="resource/ivyleague-logo.jpg", *
 
 
 def send_signup_message(username: str, user_email: str):
-    # print("Func called successfully. #Debug")
+    print("Func called successfully. #Debug")
     snapshot1 = tracemalloc.take_snapshot()
     msg_subject = "Welcome to Ivy League Associates! Please Confirm Your Email"
     token = generate_confirmation_token(user_email, 24)
@@ -210,7 +210,7 @@ def send_signup_message(username: str, user_email: str):
         print(f"An error occurred: {e}")
         return 0
 
-#     print("COnstructing messaage. #Debug")
+    print("COnstructing messaage. #Debug")
     # 4. Send the letter generated in step 3 to that person's email address.
     message = EmailMessage()
     message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
@@ -224,12 +224,12 @@ def send_signup_message(username: str, user_email: str):
     context = ssl.create_default_context()
     breaks = 0
     while True:
-#         print("IN while baudo send. #Debug")
+        print("IN while baudo send. #Debug")
         try:
             with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
-#                 print("Logging in. #Debug")
+                print("Logging in. #Debug")
                 mail.login(user=MAIL_SENDER, password=PASSWORD)
-#                 print("Actually sending. #Debug")
+                print("Actually sending. #Debug")
 #                 mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
                 mail.send_message(message)
         except smtplib.SMTPConnectError as f:
