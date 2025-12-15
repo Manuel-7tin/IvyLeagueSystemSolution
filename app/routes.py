@@ -1643,8 +1643,8 @@ def register_routes(app):
             request_data = request.get_json()
             code = request_data.get("company_name")[:4].upper() + uuid.uuid4().hex[:5]
             new_sponsored = Sponsored(
-                first_name=request_data.get("firstname"),
-                last_name=request_data.get("lastname"),
+                first_name=request_data.get("first_name"),
+                last_name=request_data.get("last_name"),
                 company=request_data.get("company_name").title(),
                 papers=request_data.get("papers"),
                 token=code,
@@ -1657,7 +1657,7 @@ def register_routes(app):
                                desc="""A sponsorship entry has been created for a student""",
                                staff=staff,
                                object_id=2,
-                               obj=f"Student: {request_data.get("firstname")} {request_data.get("lastname")}")
+                               obj=f"Student: {request_data.get("first_name")} {request_data.get("last_name")}")
             staff.last_active = datetime.now()
             db.session.commit()
             return jsonify(
@@ -1665,17 +1665,17 @@ def register_routes(app):
                     "Operation Success": f"A new sponsorship entry has been created successfully."
                 }
             ), 200
-        except Exception as e:
+        except ZeroDivisionError as e: #Exception as e:
             return jsonify(
                 {"Error": f"Error creating sponsorship: {e}"}
-            )
+            ), 400
 
 
     @app.route("/api/v1/sponsorships", methods=["GET"])
     @auth_required
     @role_required("lite_admin")
     def sponsorships(user_id):
-        sponsorships = db.session.execute(db.select(Sponsored).order_by(Sponsored.email.asc())).scalars().all()
+        sponsorships = db.session.execute(db.select(Sponsored).order_by(Sponsored.first_name.asc())).scalars().all()
         sponsorship_data = [{"first_name": sponsorship.first_name,
                              "last_name": sponsorship.last_name,
                              "company": sponsorship.company,
