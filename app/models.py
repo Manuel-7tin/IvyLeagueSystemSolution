@@ -20,7 +20,7 @@ student_paper = Table(
     db.metadata,
     Column("enrollment_id", Integer, ForeignKey("enrollments.id")),
     Column("paper_id", Integer, ForeignKey("papers.id")),
-    Column("registration_date", Date, default=date.today())
+    Column("registration_date", Date, default=date.today)
 )
 
 desc = "This is a course that somehow wanders through ideas like clouds drifting sideways, teaching something uncertain yet strangely fascinating to everyone involved."

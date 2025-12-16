@@ -1,14 +1,16 @@
 import os
-import psycopg2
 from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
-from flask_login import LoginManager
+# from flask_login import LoginManager
 from .models import db, Base, migrate
 from app.routes import register_routes
-from sqlalchemy import create_engine, text
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+# from sqlalchemy import create_engine, text
 # from services.diet_version_manager import create_versioned_table_and_scheduler
+
+if os.getenv("FLASK_ENV") != "production":
+    import psycopg2
+    from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 
 def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HOST"), port=os.getenv("PORT")): # host="dpg-d11it5ffte5s7399ff3g-a", port=5432)
@@ -33,38 +35,39 @@ def create_postgres_db_if_not_exists(db_name, user, password, host=os.getenv("HO
     except Exception as e:
         print(f"❌ Failed to create database: {e}")
 
-engine = create_engine(os.getenv("DATABASE_URL"))
+# engine = create_engine(os.getenv("DATABASE_URL"))
 # engine = create_engine("postgresql://postgres:root@localhost:5432/ivyleague")  # Replace with your actual URL
 # login_manager = LoginManager()
 
-def reset_database():
-    with engine.connect() as conn:
-        trans = conn.begin()
-
-        try:
-            # Get all table names (except protected ones)
-            result = conn.execute(text("""
-                SELECT tablename FROM pg_tables
-                WHERE schemaname = 'public'
-                AND tablename NOT IN ('your_core_table1', 'your_core_table2')
-            """))
-            tables = [row[0] for row in result]
-
-            for table in tables:
-                conn.execute(text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;'))
-
-            trans.commit()
-        except Exception as e:
-            trans.rollback()
-            raise e
-
-    # Recreate any missing tables
-    Base.metadata.create_all(engine)
+# def reset_database():
+#     with engine.connect() as conn:
+#         trans = conn.begin()
+#
+#         try:
+#             # Get all table names (except protected ones)
+#             result = conn.execute(text("""
+#                 SELECT tablename FROM pg_tables
+#                 WHERE schemaname = 'public'
+#                 AND tablename NOT IN ('your_core_table1', 'your_core_table2')
+#             """))
+#             tables = [row[0] for row in result]
+#
+#             for table in tables:
+#                 conn.execute(text(f'TRUNCATE TABLE "{table}" RESTART IDENTITY CASCADE;'))
+#
+#             trans.commit()
+#         except Exception as e:
+#             trans.rollback()
+#             raise e
+#
+#     # Recreate any missing tables
+#     Base.metadata.create_all(engine)
 
 
 def create_app():
     load_dotenv()
-    create_postgres_db_if_not_exists(os.getenv("DBNAME"), os.getenv("DB_USER"), os.getenv("DB_PASSWORD")) #("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
+    if os.getenv("FLASK_ENV") != "production":
+        create_postgres_db_if_not_exists(os.getenv("DBNAME"), os.getenv("DB_USER"), os.getenv("DB_PASSWORD")) #("ivyleague", "render", "vUrYJ2HGlN7pu3kohoaNfglsujbNb1OW")
     # reset_database()
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.getenv("FLASK_APP_SECRET_KEY")
@@ -77,9 +80,15 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
 
-    with app.app_context():
-        # db.drop_all() # For development purposes
-        db.create_all()
+
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        db.session.remove()
+
+
+    # with app.app_context():
+    #     # db.drop_all() # For development purposes
+    #     db.create_all()
 
     # create_versioned_table_and_scheduler(app)
 

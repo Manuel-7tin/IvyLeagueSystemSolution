@@ -839,10 +839,12 @@ def register_routes(app):
         #             "Access Denied": f"You do not have access to this resource",
         #         }
         #     ), 403
-        token = request.args.get("token")
+        data = request.get_json()
+        token = data.get("token") # New and untested
+        # token = request.args.get("token") # New and untested
         if token is None:
             print("TOken is none and confirm email has been called. #Debug")
-            data = request.get_json()
+            # data = request.get_json()
             user = db.session.execute(db.select(Signee).where(Signee.email == data.get("email"))).scalar()
             if not user:
                 print("No User found. #Debug")
@@ -1270,9 +1272,11 @@ def register_routes(app):
                 # reg_start=dsnip andion_date=datetime.now()
             )
             db.session.add(new_diet)
+
             pps = db.session.execute(db.select(Paper).where(Paper.code.in_(request_data.get("papers")))).scalars().all()
+            all_templates = db.session.execute(db.select(DirectoryTemplate)).scalars().all()
+            new_instances = [] # New and untested
             for paper in pps:
-                all_templates = db.session.execute(db.select(DirectoryTemplate)).scalars().all()
                 for template in all_templates:
                     instance_path = f"/{paper.code} {name}{template.path_template}"
                     new_instance = DirectoryInstance(
@@ -1285,8 +1289,9 @@ def register_routes(app):
                         template=template,
                     )
                     db.session.add(new_instance)
-            new_instances = db.session.execute(
-                db.select(DirectoryInstance).where(DirectoryInstance.course_spec.ilike(f"%{name}%"))).scalars().all()
+                    new_instances.append(new_instance) # New and untested
+            # new_instances = db.session.execute(
+            #     db.select(DirectoryInstance).where(DirectoryInstance.course_spec.ilike(f"%{name}%"))).scalars().all()
             # db.session.commit()
             for instance in new_instances:
                 if not instance.parent_id:
@@ -1678,7 +1683,7 @@ def register_routes(app):
         sponsorships = db.session.execute(db.select(Sponsored).order_by(Sponsored.first_name.asc())).scalars().all()
         sponsorship_data = [{"first_name": sponsorship.first_name,
                              "last_name": sponsorship.last_name,
-                             "company": sponsorship.company,
+                             "company_name": sponsorship.company,
                              "papers": sponsorship.papers,
                              "token": sponsorship.token,
                              "used": sponsorship.used,
