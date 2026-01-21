@@ -55,7 +55,7 @@ class Role:
         'lite_admin': 2,
         'pro_admin': 3,
         'super_admin': 4,
-        'board': 5
+        'board_member': 5
     }
 
     @classmethod
@@ -496,3 +496,6 @@ class Review(db.Model):
 # THink of a view our project page, since they can't view papers without putting their details'
 # YOu might need a review table
 # Add date created to the scgolarsgips
+
+#Add an Edit_date to sponsorship and scholarship
+# Add the block column to student table and it's mechancs

@@ -1692,6 +1692,48 @@ def register_routes(app):
         return jsonify(sponsorship_data), 200
 
 
+    @app.route("/api/v1/edit-sponsorship", methods=["PATCH"])
+    @auth_required
+    @role_required("pro_admin")
+    def edit_sponsorship(user_id):
+        try:
+            request_data = request.get_json()
+            sponsorship = db.session.execute(db.select(Sponsored).where(Sponsored.token == request_data.get("token"))).scalar()
+            if sponsorship.used:
+                return jsonify(
+                    error={
+                        "Operation Failure": f"Sponsorship already used."
+                    }
+                ), 400
+            sponsorship.first_name = request_data.get("firstname", sponsorship.first_name)
+            sponsorship.last_name = request_data.get("lastname", sponsorship.last_name)
+            sponsorship.company = request_data.get("company_name", sponsorship.company)
+            sponsorship.papers = request_data.get("papers", sponsorship.papers)
+            sponsorship.diet_name = request_data.get("diet_name", sponsorship.diet_name)
+            #ADD DATE EDITED
+
+            staff = db.session.execute(db.select(Staff).where(Staff.id == user_id)).scalar()
+            log_staff_activity(title="Sponsorship Details Edited.",
+                               desc="""The details of an existing sponsorship were modified, including updates to key 
+                               attributes such as sponsored papers, sponsoring company, and associated diet name.""",
+                               staff=staff,
+                               object_id=2,
+                               obj=f"Sponsorship: {sponsorship.id}")
+            staff.last_active = datetime.now()
+            db.session.commit()
+            return jsonify(
+                {
+                    "Operation Success": f"Details of Sponsorship {sponsorship.id} has been edited successfully."
+                }
+            ), 200
+        except Exception as e:
+            return jsonify(
+                error={
+                    "Operation Failure": f"Failed to edit paper, error: {e}."
+                }
+            ), 400
+
+
     @app.route("/api/v1/block-students", methods=["PATCH"])
     @auth_required
     @role_required("super_admin")
@@ -1724,51 +1766,60 @@ def register_routes(app):
     @auth_required
     @role_required("super_admin")
     def create_admin(user_id):
-        def generate_code(role):
-            prefixes = {"admin": "ADM", "board": "BRD", "tutor": "TUT", "intern": "INT"}
-            if "_" in role:
-                role = "admin"
-            prefix = prefixes.get(role)
-            codes = db.session.execute(
-                db.select(Staff).where(Staff.code.ilike(f"%{prefix}%"))).scalars().all()
-            code_num = [int(code.split("-").strip()) for code in codes]
-            new_num = max(code_num) + 1
-            new_code = f"{prefix} - {new_num:05}"
+        try:
+            def generate_code(role):
+                prefixes = {"admin": "ADM", "board": "BRD", "tutor": "TUT", "intern": "INT"}
+                if "_" in role:
+                    role = "admin"
+                prefix = prefixes.get(role)
+                admins = db.session.execute(
+                    db.select(Staff).where(Staff.code.ilike(f"%{prefix}%"))).scalars().all()
+                code_num = [int(admin.code.split("-")[1].strip()) for admin in admins]
+                new_num = max(code_num) + 1
+                new_code = f"{prefix} - {new_num:05}"
 
-            return new_code
+                return new_code
 
-        request_data = request.get_json()
-        gender = request_data.get("gender").lower()
-        new_staff = Staff(
-            title="XXX" if gender == "female" else "Mr",
-            first_name=request_data.get("firstname"),
-            last_name=request_data.get("lastname"),
-            email=request_data.get("email"),
-            phone_number=request_data.get("phone"),
-            password="xxxxxxxxx",
-            birth_date=datetime.now(),
-            code=generate_code(request_data.get("role")),
-            gender=gender,
-            role=request_data.get("role"),
-            employment_type=request_data.get("type"),
-            status="Inactive",
-            hire_date=request_data.get("hiredate"),
-        )
-        db.session.add(new_staff)
-        staff = db.session.execute(db.select(Staff).where(Staff.id == user_id)).scalar()
-        log_staff_activity(title="Initiated New Admin.",
-                           desc="""A new admin account creation has just been initiated but is yet to be completed..""",
-                           staff=staff,
-                           object_id=2,
-                           obj=f"Staff: {staff.code}")
-        send_staff_creation_message(request_data.get("firstname"), request_data.get("email"), "initialize-admin")
-        staff.last_active = datetime.now()
-        db.session.commit()
-        return jsonify(
-            {
-                "Operation Success": f"You have successfully initiated the creation of a(n) {request_data.get("role")}."
-            }
-        ), 200
+            request_data = request.get_json()
+            gender = request_data.get("gender").lower()
+            new_staff = Staff(
+                title="XXX" if gender == "female" else "Mr",
+                first_name=request_data.get("firstname"),
+                last_name=request_data.get("lastname"),
+                email=request_data.get("email"),
+                phone_number=request_data.get("phone"),
+                password="xxxxxxxxx",
+                birth_date=datetime.now(),
+                house_address="Place holder",
+                photo="Place holder",
+                code=generate_code(request_data.get("role")),
+                gender=gender,
+                role=request_data.get("role"),
+                employment_type=request_data.get("type"),
+                status="Inactive",
+                hire_date=request_data.get("hiredate"),
+            )
+            db.session.add(new_staff)
+            staff = db.session.execute(db.select(Staff).where(Staff.id == user_id)).scalar()
+            log_staff_activity(title="Initiated New Admin.",
+                               desc="""A new admin account creation has just been initiated but is yet to be completed..""",
+                               staff=staff,
+                               object_id=2,
+                               obj=f"Staff: {staff.code}")
+            send_staff_creation_message(request_data.get("firstname"), request_data.get("email"), "initialize-admin")
+            staff.last_active = datetime.now()
+            db.session.commit()
+            return jsonify(
+                {
+                    "Operation Success": f"You have successfully initiated the creation of a(n) {request_data.get("role")}."
+                }
+            ), 200
+        except ZeroDivisionError as e: #Exception as e:
+            return jsonify(
+                {
+                    "Operation Error": f"An error occurred {e}."
+                }
+            ), 400
         # phone_number: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
         # password: Mapped[str] = mapped_column(String(100), nullable=False)
         # birth_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -1781,10 +1832,10 @@ def register_routes(app):
     @app.route("/api/v1/complete-admin", methods=["PATCH"])
     @auth_required
     @role_required("tutor")
-    def complete_admin():
+    def complete_admin(user_id):
         request_data = request.get_json()
         email = verify_email(request_data.get("token", ""))
-        staff = db.session.execute(db.select(Staff).where(Staff.email == email)).scalar()
+        staff = db.session.execute(db.select(Staff).where(Staff.email == email[1])).scalar()
 
         if isinstance(request_data.get("dob"), str):
             try:
@@ -1793,14 +1844,14 @@ def register_routes(app):
                 d_o_b = datetime.strptime(request_data.get("dob"), "%d/%m/%Y")
         else:
             d_o_b = request_data.get("dob")
-        with open("pfp.jpg", mode="rb") as f:
-            image_binary = f.read() # VERY VERY TEMP
+        # with open("pfp.jpg", mode="rb") as f:
+        #     image_binary = f.read() # VERY VERY TEMP
         hash_and_salted_password = generate_password_hash(
             request_data.get("password"),
             method='pbkdf2:sha256',
             salt_length=8
         )
-        pfp_url = store_pfp(request_data.get("profile_pic"), email)
+        pfp_url = store_pfp(request_data.get("profile_pic"), email[1])
 
         staff.phone_number = request_data.get("phone")
         staff.password = hash_and_salted_password
@@ -1814,7 +1865,7 @@ def register_routes(app):
                            staff=staff,
                            object_id=2,
                            obj=f"Staff: {staff.code}")
-        send_staff_creation_message(request_data.get("firstname"), request_data.get("email"), "complete-admin")
+        send_staff_creation_message(request_data.get("firstname"), email[1], "complete-admin")
         staff.last_active = datetime.now()
         db.session.commit()
         return jsonify(
@@ -1845,7 +1896,7 @@ def register_routes(app):
     @app.route('/api/v1/staff-activities', methods=['GET'])
     @auth_required
     @role_required("super_admin")
-    def staff_doings():
+    def staff_doings(user_id):
         activities = staff_activities()
         return jsonify(activities), 200
 
@@ -2256,16 +2307,15 @@ def register_routes(app):
     @role_required("lite_admin")
     def view_payment(user_id):
         payment = db.session.execute(db.select(Payment).where(Payment.student_reg == request.args.get("reg_no"))).scalar()
-        if not paper:
-            return jsonify({"Error": "Paper not found"}), 400
-        paper_details = {"name": paper.name,
-                        "code": paper.code,
-                        "description": paper.description,
-                        "price": paper.price,
-                        "revision": paper.revision,
-                        "category": paper.category,
-                        "availability": paper.available,
-                        "edit_code": False} # Set this in a db table later e.g SystemData
+        if not payment:
+            return jsonify({"Error": "Payment not found"}), 400
+        paper_details = {"student_reg": payment.student_reg,
+                        "amount": payment.amount,
+                        "payment_reference": payment.payment_reference,
+                        "paid_for": payment.purpose,
+                        "medium": payment.medium,
+                        "date_paid": payment.paid_at,
+                        "receipt_no": payment.receipt_number,} # Set this in a db table later e.g SystemData
         return jsonify(paper_details), 200
 
 
@@ -2297,240 +2347,241 @@ def register_routes(app):
         return jsonify({"oi": 3})
         # return jsonify({"toks": generate_token(None, None, True)})
 
+# Do not forget to add a view admin endpoint
+#     try:
+#         with app.app_context():
+#             print("Creating paper entries")
+#             papers = pd.read_excel("resource/ivy pricing.xlsx")
+#             """"""
+#             for i, paper in papers.iterrows():
+#                 if not isinstance(paper["Knowledge papers"], float):
+#                     print("Paper not float")
+#                     print(f"At index {i} paper:", " ".join(paper['Knowledge papers'].split()[:-1])) #, paper['Knowledge papers'])
+#                     if "papers" in paper["Knowledge papers"].lower():
+#                         continue
+#                     variations = [(" Standard", "std"), (" Intensive", "int")]
+#                     for j in range(2):
+#                         print("IN 2 rnage for PP")
+#                         code = paper["Knowledge papers"].split()[-1]
+#                         # if code in ["BT", "FA", "MA", "CBL", "OBU", "DipIFRS"] and j != 0:
+#                         #     print("Continuing as BT is not in intensive")
+#                         if j != 0:
+#                             print("Continue as we are no longer dealing with intensive")
+#                             continue
+#                         if code in ["OBU", "DipIFRS"]:
+#                             revision = 0
+#                             extension = ""
+#                             category = "Additional"
+#                             price = paper.Standard
+#                         else:
+#                             if code in ["BT", "FA", "MA"]:
+#                                 category = "Knowledge"
+#                             elif code in ["PM", "FR", "AA", "TAX", "FM", "CBL"]:
+#                                 category = "Skill"
+#                             else:
+#                                 category = "Professional"
+#                             code = "TX" if code == "TAX" else code
+#                             # code = f"{code}-{variations[i][1]}"
+#                             extension = variations[j][0]
+#                             price = paper.Standard + (paper.revision if code[-3:] == "std" else 0)
+#                             revision = 20_000 if code[-3:] == "std" else 0
+#
+#                         new_paper = Paper(
+#                             name=" ".join(paper["Knowledge papers"].split()[:-1]).title(), # + extension,
+#                             code=code,
+#                             price=40_000, #int(price),
+#                             revision=20_000, #revision,
+#                             category=category
+#                         )
+#                         print("Reach before adding")
+#                         db.session.add(new_paper)
+#                 print("Reach before commiting")
+#                 db.session.commit()
+#                 print(f"At index {i} DONE!!!")
+#
+#         with app.app_context():
+#             with open("resource/questions.json", mode="r") as file:
+#                 data = json.load(file)
+#             new_data = SystemData(
+#                 data_name="reg_form_info",
+#                 data=data
+#             )
+#             new_data2 = SystemData(
+#                 data_name="levels",
+#                 data={"acca": ["step 1", "step 2", "step 3", "step 4", "step 5", "step 6"]}
+#             )
+#             db.session.add_all([new_data, new_data2])
+#             db.session.commit()
+#
+#         with app.app_context():
+#             insert_sponsored_row("John", "Doe", "KPMG", ["APM-std", "BT-int"], "KPMG12345", "2026_March")
+#             insert_sponsored_row("Ayomide", "Ojutalayo", "Deloitte", ["AFM-std", "SBL-int"], "Deloitte789", "2026_March")
+#             insert_sponsored_row("Ayomide", "Ojutalayo", "AGBA", ["AFM-std", "PM-int"], "AGBA123", "2026_June")
+#             insert_sponsored_row("Jane", "Doe", "PWC", ["FM-std", "MA-int"], "PWC12345", "2026_March")
+#
+#         for pp in ["TX", "CBL"]:
+#             with app.app_context():
+#                 new_schols = Scholarship(
+#                     email="Jan@samp.com",
+#                     paper=pp,
+#                     discount=15,
+#                     diet_name="2025_March"
+#                 )
+#                 db.session.add(new_schols)
+#                 db.session.commit()
+#
+#         with app.app_context():
+#             new_schols2 = Scholarship(
+#                 email="ojutalayoayomide21@gmail.com",
+#                 paper="TX",
+#                 discount=20,
+#                 diet_name="2025_March"
+#             )
+#             db.session.add(new_schols2)
+#             db.session.commit()
+#         # dt_1 = datetime(2025, 9, 1, 15, 30, 0)
+#         # dt_1_b = datetime(2025, 11, 1, 15, 30, 0)
+#         # dt_2 = datetime(2026, 1, 1, 15, 30, 0)
+#         # dt_2_b = datetime(2026, 3, 27, 15, 30, 0)
+#         # dt_3 = datetime(2026, 5, 1, 15, 30, 0)
+#         # dt_3_b = datetime(2026, 6, 26, 15, 30, 0)
+#         # dt_4 = datetime(2026, 7, 8, 15, 30, 0)
+#         # dt_4_b = datetime(2026, 8, 29, 15, 30, 0)
+#         # dts = [dt_1, dt_2, dt_3, dt_4]
+#         # dtl = [dt_1_b, dt_2_b, dt_3_b, dt_4_b]
+#         # for i, month in enumerate(["March", "June", "September", "December"]):
+#         #     with app.app_context():
+#         #         new_diet = Diet(
+#         #             name=f"{datetime.now().year}_{month}",
+#         #             reg_start=dts[i],
+#         #             reg_deadline=dtl[i],
+#         #             revision_start=datetime(2026, 8, 29, 15, 30, 0),
+#         #             revision_deadline=datetime(2026, 8, 29, 15, 30, 0),
+#         #             completion_date=datetime(2026, 8, 29, 15, 30, 0),
+#         #         )
+#         #         db.session.add(new_diet)
+#         #         db.session.commit()
+#         with app.app_context():
+#             print("doing staff")
+#             new_staff = Staff(
+#                 title="Mr",
+#                 first_name="Ayomide",
+#                 last_name="Ojutalayo",
+#                 email="ojutalayoayomide21@gmail.com",
+#                 phone_number="08012345667",
+#                 password="pbkdf2:sha256:1000000$pjWHjSTC$31dab95672358c4626cda6521d8f195606edbe58f6facc350eb06b3c8a616edb",
+#                 # password=generate_password_hash(
+#                 #         "acca1234",
+#                 #         method='pbkdf2:sha256',
+#                 #         salt_length=8
+#                 #     ),
+#                 code="ADM - 00001",
+#                 photo="ad sfjnfs",
+#                 gender="Male",
+#                 birth_date=datetime.now(),
+#                 house_address="sdbgs dwvdbyh fiws ss",
+#                 role="super_admin",
+#                 employment_type="Full-Time",
+#                 status="Active"
+#             )
+#             new_staff_2 = Staff(
+#                 title="Mr",
+#                 first_name="John",
+#                 last_name="Doe",
+#                 email="ivyleagueassociates@gmail.com",
+#                 phone_number="08034566789",
+#                 password=generate_password_hash(
+#                         "Acca1234",
+#                         method='pbkdf2:sha256',
+#                         salt_length=8
+#                     ),
+#                 code="ADM - 00001",
+#                 photo="ad sfjnfs",
+#                 gender="Male",
+#                 birth_date=datetime.now(),
+#                 house_address="sdbgs dwvdbyh fiws ss",
+#                 role="super_admin",
+#                 employment_type="Full-Time",
+#                 status="Active"
+#             )
+#             db.session.add_all([new_staff, new_staff_2])
+#             db.session.commit()
+#             # print(generate_token(1, "super_admin"))
+#
+#         # with app.app_context():
+#         #     def json_to_paths(data, prefix=""):
+#         #         """Recursively convert nested dicts to 'path|path|path' strings."""
+#         #         paths = []
+#         #         for key, value in data.items():
+#         #             new_prefix = f"{prefix}|{key}" if prefix else key  # build hierarchical prefix
+#         #             if isinstance(value, dict) and value:
+#         #                 # Recursively go deeper
+#         #                 sub_paths = json_to_paths(value, new_prefix)
+#         #                 paths.extend(sub_paths)
+#         #             else:
+#         #                 # Leaf node — add path to list
+#         #                 paths.append(new_prefix)
+#         #         return paths
+#         #
+#         #     with open("resource/foldertemplate.json", mode="r") as file:
+#         #         template = json.load(file)
+#         #     full_paths = json_to_paths(template, prefix="")
+#         #     print(full_paths[3])
+#         #     for a_path in full_paths:
+#         #         a_path_split = a_path.split("|")
+#         #         # print(a_path_split)
+#         #         for i, v in enumerate(a_path_split):
+#         #             pair = []
+#         #             if i > 0:
+#         #                 parent = "/" + "/".join(a_path_split[1:i])
+#         #                 path = parent + v if parent[-1] == "/" else parent + "/" + v
+#         #                 existing_folders = {
+#         #                     d.path_template for d in db.session.scalars(
+#         #                         db.select(DirectoryTemplate).where(DirectoryTemplate.path_template.in_([parent, path]))
+#         #                     )
+#         #                 }
+#         #
+#         #                 if parent not in existing_folders:
+#         #                     pre = "/".join(parent.split("/")[:-1])
+#         #                     pre = db.session.execute(
+#         #                         db.select(DirectoryTemplate).where(DirectoryTemplate.path_template == pre)
+#         #                     ).scalar_one_or_none()
+#         #                     new_template_folder = DirectoryTemplate(
+#         #                         name=parent.split("/")[-1],
+#         #                         title="Gbaskole",
+#         #                         parent_id=pre.id,
+#         #                         path_template=parent,
+#         #                         parent=pre
+#         #                     )
+#         #                     # pair.append(parent)
+#         #                     db.session.add(new_template_folder)
+#         #                 if path not in existing_folders:
+#         #                     pre = db.session.execute(
+#         #                         db.select(DirectoryTemplate).where(DirectoryTemplate.path_template == parent)
+#         #                     ).scalar_one_or_none()
+#         #                     new_template_folder = DirectoryTemplate(
+#         #                         name=path.split("/")[-1],
+#         #                         title="Gbaskole",
+#         #                         parent_id=pre.id,
+#         #                         path_template=path,
+#         #                         parent=pre
+#         #                     )
+#         #                     db.session.add(new_template_folder)
+#         #             else:
+#         #                 root = db.session.execute(
+#         #                         db.select(DirectoryTemplate).where(DirectoryTemplate.path_template == "/")
+#         #                     ).scalar_one_or_none()
+#         #                 if not root:
+#         #                     new_template_folder = DirectoryTemplate(
+#         #                         name=v,
+#         #                         title="Gbaskole",
+#         #                         parent_id=None,
+#         #                         path_template=v,
+#         #                     )
+#         #                     db.session.add(new_template_folder)
+#         #     db.session.commit()
+#
+#     except Exception as e:
+#         print(f"The expected error don show, i catch the werey. {e}")
 
-    try:
-        with app.app_context():
-            print("Creating paper entries")
-            papers = pd.read_excel("resource/ivy pricing.xlsx")
-            """"""
-            for i, paper in papers.iterrows():
-                if not isinstance(paper["Knowledge papers"], float):
-                    print("Paper not float")
-                    print(f"At index {i} paper:", " ".join(paper['Knowledge papers'].split()[:-1])) #, paper['Knowledge papers'])
-                    if "papers" in paper["Knowledge papers"].lower():
-                        continue
-                    variations = [(" Standard", "std"), (" Intensive", "int")]
-                    for j in range(2):
-                        print("IN 2 rnage for PP")
-                        code = paper["Knowledge papers"].split()[-1]
-                        # if code in ["BT", "FA", "MA", "CBL", "OBU", "DipIFRS"] and j != 0:
-                        #     print("Continuing as BT is not in intensive")
-                        if j != 0:
-                            print("Continue as we are no longer dealing with intensive")
-                            continue
-                        if code in ["OBU", "DipIFRS"]:
-                            revision = 0
-                            extension = ""
-                            category = "Additional"
-                            price = paper.Standard
-                        else:
-                            if code in ["BT", "FA", "MA"]:
-                                category = "Knowledge"
-                            elif code in ["PM", "FR", "AA", "TAX", "FM", "CBL"]:
-                                category = "Skill"
-                            else:
-                                category = "Professional"
-                            code = "TX" if code == "TAX" else code
-                            # code = f"{code}-{variations[i][1]}"
-                            extension = variations[j][0]
-                            price = paper.Standard + (paper.revision if code[-3:] == "std" else 0)
-                            revision = 20_000 if code[-3:] == "std" else 0
-
-                        new_paper = Paper(
-                            name=" ".join(paper["Knowledge papers"].split()[:-1]).title(), # + extension,
-                            code=code,
-                            price=40_000, #int(price),
-                            revision=20_000, #revision,
-                            category=category
-                        )
-                        print("Reach before adding")
-                        db.session.add(new_paper)
-                print("Reach before commiting")
-                db.session.commit()
-                print(f"At index {i} DONE!!!")
-
-        with app.app_context():
-            with open("resource/questions.json", mode="r") as file:
-                data = json.load(file)
-            new_data = SystemData(
-                data_name="reg_form_info",
-                data=data
-            )
-            new_data2 = SystemData(
-                data_name="levels",
-                data={"acca": ["step 1", "step 2", "step 3", "step 4", "step 5", "step 6"]}
-            )
-            db.session.add_all([new_data, new_data2])
-            db.session.commit()
-
-        with app.app_context():
-            insert_sponsored_row("John", "Doe", "KPMG", ["APM-std", "BT-int"], "KPMG12345", "2026_March")
-            insert_sponsored_row("Ayomide", "Ojutalayo", "Deloitte", ["AFM-std", "SBL-int"], "Deloitte789", "2026_March")
-            insert_sponsored_row("Ayomide", "Ojutalayo", "AGBA", ["AFM-std", "PM-int"], "AGBA123", "2026_June")
-            insert_sponsored_row("Jane", "Doe", "PWC", ["FM-std", "MA-int"], "PWC12345", "2026_March")
-
-        for pp in ["TX", "CBL"]:
-            with app.app_context():
-                new_schols = Scholarship(
-                    email="Jan@samp.com",
-                    paper=pp,
-                    discount=15,
-                    diet_name="2025_March"
-                )
-                db.session.add(new_schols)
-                db.session.commit()
-
-        with app.app_context():
-            new_schols2 = Scholarship(
-                email="ojutalayoayomide21@gmail.com",
-                paper="TX",
-                discount=20,
-                diet_name="2025_March"
-            )
-            db.session.add(new_schols2)
-            db.session.commit()
-        # dt_1 = datetime(2025, 9, 1, 15, 30, 0)
-        # dt_1_b = datetime(2025, 11, 1, 15, 30, 0)
-        # dt_2 = datetime(2026, 1, 1, 15, 30, 0)
-        # dt_2_b = datetime(2026, 3, 27, 15, 30, 0)
-        # dt_3 = datetime(2026, 5, 1, 15, 30, 0)
-        # dt_3_b = datetime(2026, 6, 26, 15, 30, 0)
-        # dt_4 = datetime(2026, 7, 8, 15, 30, 0)
-        # dt_4_b = datetime(2026, 8, 29, 15, 30, 0)
-        # dts = [dt_1, dt_2, dt_3, dt_4]
-        # dtl = [dt_1_b, dt_2_b, dt_3_b, dt_4_b]
-        # for i, month in enumerate(["March", "June", "September", "December"]):
-        #     with app.app_context():
-        #         new_diet = Diet(
-        #             name=f"{datetime.now().year}_{month}",
-        #             reg_start=dts[i],
-        #             reg_deadline=dtl[i],
-        #             revision_start=datetime(2026, 8, 29, 15, 30, 0),
-        #             revision_deadline=datetime(2026, 8, 29, 15, 30, 0),
-        #             completion_date=datetime(2026, 8, 29, 15, 30, 0),
-        #         )
-        #         db.session.add(new_diet)
-        #         db.session.commit()
-        with app.app_context():
-            print("doing staff")
-            new_staff = Staff(
-                title="Mr",
-                first_name="Ayomide",
-                last_name="Ojutalayo",
-                email="ojutalayoayomide21@gmail.com",
-                phone_number="08012345667",
-                password="pbkdf2:sha256:1000000$pjWHjSTC$31dab95672358c4626cda6521d8f195606edbe58f6facc350eb06b3c8a616edb",
-                # password=generate_password_hash(
-                #         "acca1234",
-                #         method='pbkdf2:sha256',
-                #         salt_length=8
-                #     ),
-                code="ADM - 00001",
-                photo="ad sfjnfs",
-                gender="Male",
-                birth_date=datetime.now(),
-                house_address="sdbgs dwvdbyh fiws ss",
-                role="super_admin",
-                employment_type="Full-Time",
-                status="Active"
-            )
-            new_staff_2 = Staff(
-                title="Mr",
-                first_name="John",
-                last_name="Doe",
-                email="ivyleagueassociates@gmail.com",
-                phone_number="08034566789",
-                password=generate_password_hash(
-                        "Acca1234",
-                        method='pbkdf2:sha256',
-                        salt_length=8
-                    ),
-                code="ADM - 00001",
-                photo="ad sfjnfs",
-                gender="Male",
-                birth_date=datetime.now(),
-                house_address="sdbgs dwvdbyh fiws ss",
-                role="super_admin",
-                employment_type="Full-Time",
-                status="Active"
-            )
-            db.session.add_all([new_staff, new_staff_2])
-            db.session.commit()
-            # print(generate_token(1, "super_admin"))
-
-        with app.app_context():
-            def json_to_paths(data, prefix=""):
-                """Recursively convert nested dicts to 'path|path|path' strings."""
-                paths = []
-                for key, value in data.items():
-                    new_prefix = f"{prefix}|{key}" if prefix else key  # build hierarchical prefix
-                    if isinstance(value, dict) and value:
-                        # Recursively go deeper
-                        sub_paths = json_to_paths(value, new_prefix)
-                        paths.extend(sub_paths)
-                    else:
-                        # Leaf node — add path to list
-                        paths.append(new_prefix)
-                return paths
-
-            with open("resource/foldertemplate.json", mode="r") as file:
-                template = json.load(file)
-            full_paths = json_to_paths(template, prefix="")
-            print(full_paths[3])
-            for a_path in full_paths:
-                a_path_split = a_path.split("|")
-                # print(a_path_split)
-                for i, v in enumerate(a_path_split):
-                    pair = []
-                    if i > 0:
-                        parent = "/" + "/".join(a_path_split[1:i])
-                        path = parent + v if parent[-1] == "/" else parent + "/" + v
-                        existing_folders = {
-                            d.path_template for d in db.session.scalars(
-                                db.select(DirectoryTemplate).where(DirectoryTemplate.path_template.in_([parent, path]))
-                            )
-                        }
-
-                        if parent not in existing_folders:
-                            pre = "/".join(parent.split("/")[:-1])
-                            pre = db.session.execute(
-                                db.select(DirectoryTemplate).where(DirectoryTemplate.path_template == pre)
-                            ).scalar_one_or_none()
-                            new_template_folder = DirectoryTemplate(
-                                name=parent.split("/")[-1],
-                                title="Gbaskole",
-                                parent_id=pre.id,
-                                path_template=parent,
-                                parent=pre
-                            )
-                            # pair.append(parent)
-                            db.session.add(new_template_folder)
-                        if path not in existing_folders:
-                            pre = db.session.execute(
-                                db.select(DirectoryTemplate).where(DirectoryTemplate.path_template == parent)
-                            ).scalar_one_or_none()
-                            new_template_folder = DirectoryTemplate(
-                                name=path.split("/")[-1],
-                                title="Gbaskole",
-                                parent_id=pre.id,
-                                path_template=path,
-                                parent=pre
-                            )
-                            db.session.add(new_template_folder)
-                    else:
-                        root = db.session.execute(
-                                db.select(DirectoryTemplate).where(DirectoryTemplate.path_template == "/")
-                            ).scalar_one_or_none()
-                        if not root:
-                            new_template_folder = DirectoryTemplate(
-                                name=v,
-                                title="Gbaskole",
-                                parent_id=None,
-                                path_template=v,
-                            )
-                            db.session.add(new_template_folder)
-            db.session.commit()
-
-    except Exception as e:
-        print(f"The expected error don show, i catch the werey. {e}")
 
