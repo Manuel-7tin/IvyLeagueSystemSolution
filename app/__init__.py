@@ -86,9 +86,9 @@ def create_app():
         db.session.remove()
 
 
-    # with app.app_context():
+    with app.app_context():
     #     # db.drop_all() # For development purposes
-    #     db.create_all()
+        db.create_all()
 
     # create_versioned_table_and_scheduler(app)
 

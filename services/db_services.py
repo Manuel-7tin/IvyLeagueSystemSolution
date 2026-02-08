@@ -12,7 +12,8 @@ from pprint import pprint
 from app.models import db
 from config import Config
 from flask import jsonify, copy_current_request_context
-from datetime import datetime
+from functools import wraps
+from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 from app.errors import UserNotFoundError
@@ -21,7 +22,7 @@ from requests.exceptions import ConnectionError
 from services.other_services import store_pfp
 from services.account_services import send_receipt
 from app.models import Attempt, Student, Paper, Action, Signee, Payment, Sponsored, Scholarship, Enrollment, Diet
-from app.models import StaffActivity
+from app.models import StaffActivity, DirectoryInstance, GatewayTest, McqHistory
 
 
 def encode_year(year: int, a=117, b=53, m=10000):
@@ -77,7 +78,7 @@ def log_staff_activity(**kwargs):
     new_activity = StaffActivity(
         title = kwargs.get("title"),
         description = kwargs.get("desc"),
-        time = kwargs.get("time") or datetime.now(),
+        time = kwargs.get("time") or datetime.now(timezone.utc),
         staff = kwargs.get("staff"),
         object_id=kwargs.get("object_id"),
         object_type = kwargs.get("obj"),
@@ -87,7 +88,7 @@ def log_staff_activity(**kwargs):
 
 def generate_payment_reference(prefix: str):
     unique_part = uuid.uuid4().hex  # 32-char hex string
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     return f"{prefix}-{timestamp}-{unique_part[:8]}"
 
 
@@ -143,12 +144,13 @@ def calculate_discount_amount(discount: list, papers: list):
 
 
 def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_details: any=None):
+    print("IN move signee")
     stmt = select(func.count()).select_from(Student)
     stmt2 = sqlalchemy.text("SELECT last_value FROM students_id_seq")
     ser = db.session.execute(stmt2).scalar()
     total_students = db.session.execute(stmt).scalar()
     print(ser, total_students)
-    year_code = encode_year(datetime.now().year)  # e.g., 6318
+    year_code = encode_year(datetime.now(timezone.utc).year)  # e.g., 6318
     serial_code = encode_serial(total_students)
     if sponsored:
         sponsor = spons_details.company
@@ -165,7 +167,7 @@ def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_detail
         paid = int(paid/100)
         diet = db.session.execute(db.select(Diet).where(Diet.name == info.get("diet_name"))).scalar()
 
-    print(info)
+    # print(info)
     full_payment = sum([paper.price for paper in papers])
     discount_amount = calculate_discount_amount(info.get("discount", [0]), info.get("discount_papers", []))
     full_payment = full_payment - discount_amount
@@ -282,6 +284,7 @@ def move_signee(info: dict, sponsored: bool, email: str, paid: any, spons_detail
 
 
 def update_action(email, action, details):
+    print("In update action")
     new_action = Action(
         actor=email,
         action=action,
@@ -292,6 +295,7 @@ def update_action(email, action, details):
 
 
 def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_details: any=None, **kwargs):
+    print("In update payment")
     student = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
 
     if len(kwargs.get("context", [])) < 1 or not kwargs.get("purpose") or len(kwargs.get("user_info", [])) != 5:
@@ -334,7 +338,7 @@ def update_payment(sponsored: bool, email: str, payment_data: dict=None, spons_d
             medium=spons_details.company,
             fee=0,
             currency="Unknown",
-            created_at=datetime.now(),
+            created_at=datetime.now(timezone.utc),
             paid_at=datetime(2060, 12, 31),
             receipt_number=new_receipt_no,
             receipt=receipt_file.getvalue(),
@@ -403,13 +407,14 @@ def insert_sponsored_row(firstname, lastname, org, papers, token, diet_name):
 
 def post_payment_executions(reference: str, payment_data: dict) -> tuple:
     """ This function is currently only capable of processing payments for registrations """
+    print("In Post payment func")
     # attempt = db.session.query(Attempt).filter_by(payment_reference=reference).first()
     attempt = db.session.execute(db.select(Attempt).where(Attempt.payment_reference == reference)).scalar()
     if not attempt:
         return jsonify(
             error={"Error": f"Unknown user reference."}
         ), 400
-    print(reference)
+    # print(reference)
     payment_metadata = payment_data.get("metadata")
     user_type = attempt.user_type
     email = attempt.email
@@ -418,7 +423,13 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
         try:
             res = move_signee(attempt.other_data, sponsored=False, paid=amount_paid, email=email)
             user = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
-            currently_enrolled = [paper for entry in user.enrollments if entry.diet.completion_date > datetime.now() for paper in entry.papers]
+            # currently_enrolled = [paper for entry in user.enrollments if entry.diet.completion_date > datetime.now(timezone.utc) for paper in entry.papers]
+            currently_enrolled = [
+                (paper, entry.diet)
+                for entry in user.enrollments
+                for paper in entry.papers
+                if entry.diet.completion_date > datetime.now(timezone.utc)
+            ]
             update_payment(sponsored=False,
                            email=email,
                            payment_data=payment_data,
@@ -430,7 +441,7 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
             operation_details = f"User registered their first ever course, payments made, [{attempt.context} | Refr: {reference}]"
             update_action(email, "Registered a course.", operation_details)
         except Exception as e:
-            pprint(attempt.other_data)
+            # pprint(attempt.other_data)
             return jsonify(
                 error={"Error in post payment func": f"Unknown error {e}"}
             ), 500
@@ -447,7 +458,7 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
                 "profile_pic": user.profile_photo, #base64.b64encode(user.profile_photo).decode('utf-8'),
                 "reg_no": user.reg_no,
                 "acca_reg_no": user.acca_reg_no,
-                "papers": [{paper.code: paper.name} for paper in currently_enrolled],
+                "papers": [{paper[0].code: (paper[0].name, paper[1].name)} for paper in currently_enrolled],
                 "user_status": "student",
             }), 200
     elif user_type.lower() == "student":
@@ -458,13 +469,44 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
                 .join(Diet)  # Explicit join to the related Diet table
                 .where(Diet.name == payment_metadata.get("diet_name"))
             )
+            print("Diet name in post payment func", payment_metadata.get("diet_name"))
             enrollment = db.session.execute(stmt).scalar()
+            print("enrollment is", enrollment)
             papers = db.session.execute(db.select(Paper).where(Paper.code.in_(attempt.other_data.get("papers")))).scalars().all()
 
             discount_amount = calculate_discount_amount(attempt.other_data.get("discount", []), attempt.other_data.get("discount_papers", []))
             full_payment = sum([paper.price for paper in papers])
             full_payment -= discount_amount
             retaking = attempt.other_data.get("retaking")
+            if enrollment is None:
+                payment_status = calculate_payment_status(full_payment, int(amount_paid/100))
+                diet = db.session.execute(db.select(Diet).where(Diet.name == payment_metadata.get("diet_name"))).scalar()
+                new_enrollment = Enrollment(
+                    student_reg_no=student.reg_no,
+                    new_student=False,
+                    sponsored=False,
+                    sponsor=None,
+                    sponsored_papers="",
+                    total_fee=full_payment,
+                    amount_paid=int(amount_paid/100),
+                    payment_status=payment_status,
+                    discount=sum(attempt.other_data.get("discount", [0])) / len(
+                        attempt.other_data.get("discount", [0])) if discount_amount > 0 else 0,
+                    discount_papers=attempt.other_data.get("discount_papers", []),
+                    refund=int(amount_paid/100) - full_payment if payment_status == "Overpaid" else 0,
+                    receivable=full_payment - int(amount_paid/100) if payment_status == "Partly paid" else 0,
+                    papers=papers,
+                    student=student,
+                    diet=diet
+                )
+                db.session.add(new_enrollment)
+                stmt = (
+                    db.select(Enrollment)
+                    .join(Diet)  # Explicit join to the related Diet table
+                    .where(Diet.name == payment_metadata.get("diet_name"))
+                )
+                enrollment = db.session.execute(stmt).scalar()
+                print("enrollment is now:", enrollment)
 
             enrollment.papers.extend(papers) # Relevant ones in the absence of sponsors
             enrollment.total_fee += full_payment # Relevant ones in the absence of sponsors
@@ -509,7 +551,15 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
             db.session.delete(attempt)
             db.session.commit()
             user = db.session.execute(db.select(Student).where(Student.email == email)).scalar()
-            currently_enrolled = [paper for entry in user.enrollments if entry.diet.completion_date > datetime.now() for paper in entry.papers]
+            print("Before suspect in post payment")
+            # currently_enrolled = [paper for entry in user.enrollments if entry.diet.completion_date > datetime.now(timezone.utc) for paper in entry.papers]
+            currently_enrolled = [
+                (paper, entry.diet)
+                for entry in user.enrollments
+                for paper in entry.papers
+                if entry.diet.completion_date > datetime.now(timezone.utc)
+            ]
+            print("After suspect in post payment")
             return jsonify({
                 "title": user.title,
                 "firstname": user.first_name,
@@ -519,7 +569,7 @@ def post_payment_executions(reference: str, payment_data: dict) -> tuple:
                 "profile_pic": user.profile_photo, #base64.b64encode(user.profile_photo).decode('utf-8'),
                 "reg_no": user.reg_no,
                 "acca_reg_no": user.acca_reg_no,
-                "papers": [{paper.code: paper.name} for paper in currently_enrolled],
+                "papers": [{paper[0].code: (paper[0].name, paper[1].name)} for paper in currently_enrolled],
                 "user_status": "student",
 
             }), 200
@@ -548,7 +598,6 @@ def post_webhook_process(app, ref, data):
 def initialize_payment(data: dict, type_:str):
     """ type: as in what are they paying for? reg? rev? vid? kit? etc """
     print("From init payment")
-    pprint(data) #To Remove
     amount = data.get("amount")
     email = data.get("email")
     reference_id = generate_payment_reference(type_.split()[1]) #type_ can be REG, REV, KIT
@@ -565,18 +614,20 @@ def initialize_payment(data: dict, type_:str):
         "Authorization": f"Bearer {Config.PAYSTACK_SECRET_KEY}",
         "Content-Type": "application/json"
     }
+    print("amount sent to PAystack", amount*100)
     body = {
         "amount": amount * 100,  # Convert to kobo
         "email": email,
         "reference": reference_id,
         "metadata": {"diet_name": data["user_data"].get("diet_name"),}
     }
+    print("Diet name while initializing", data["user_data"].get("diet_name"))
 
     try:
         response = requests.post(f"{Config.BASE_URL}/transaction/initialize", json=body, headers=headers)
     except ConnectionError as e:
         attempt = db.session.execute(db.select(Attempt).where(Attempt.payment_reference == reference_id)).scalar()
-        attempt.closed_at = datetime.now()
+        attempt.closed_at = datetime.now(timezone.utc)
         attempt.payment_status = "failed"
         attempt.failure_cause = "Failed transaction initialization, Connection Error."
         db.session.commit()
@@ -587,7 +638,7 @@ def initialize_payment(data: dict, type_:str):
         )
     if response.status_code != 200:
         attempt = db.session.execute(db.select(Attempt).where(Attempt.payment_reference == reference_id)).scalar()
-        attempt.closed_at = datetime.now()
+        attempt.closed_at = datetime.now(timezone.utc)
         attempt.payment_status = "failed"
         attempt.failure_cause = "Failed transaction initialization"
         db.session.commit()
@@ -679,11 +730,69 @@ def staff_activities():
         except ZeroDivisionError:
             pass
     return checked_activities
+
+def folder_access(directory, student_id):
+    if not directory:
+        raise AttributeError
+    if directory.path.count("/") == 1:
+        return True, "" # Root folder
+    diet_name, level = directory.path.split("/")[1:3]
+    directories = db.session.execute(
+        db.select(DirectoryInstance)
+        .where(DirectoryInstance.course_spec == diet_name)
+        .order_by(DirectoryInstance.id)
+    ).scalars().all()
+
+    level_directories = [directory for  directory in directories if directory.path.count("/") == 2]
+    if level_directories[0].name == level:
+        return True, "First level" # First level requires no checks
+    for i, dir in enumerate(level_directories):
+        if dir.name != level:
+            continue
+        else:
+            former_level = level_directories[i-1].name
+            gateway = db.session.execute(
+                db.select(GatewayTest)
+                .where(GatewayTest.level == former_level)
+            ).scalar_one_or_none()
+
+            if not gateway:
+                return True, "No gateway" # No gateway test set, so no barrier
+            gateway_tests = db.session.execute(
+                db.select(McqHistory)
+                .where(
+                    McqHistory.student_id == student_id,
+                    McqHistory.code == gateway.gateway_code
+                )
+            ).scalars().all()
+            if not gateway_tests:
+                return False, "Gateway test of the previous section hasn't been taken."
+            for test in gateway_tests:
+                if test.status == "passed":
+                    return True, "E pass"
+            return False, "Has not passed the gateway test of the previous section."
+            # if i+1 == len(level_directories):
+            #     return True, ""
+    print(level_directories[level_directories.index(level) + 1].name)
+    pass
+
+
+def platform_access(student_id):
+    try:
+        student = db.session.execute(db.select(Student).where(Student.id == student_id)).scalar()
+        if student.access is None:
+            return True
+        elif student.access:
+            return True
+        else:
+            return False
+    except Exception:
+        pass
 # with app.app_context():
 #     attempts = db.session.query(Attempt).filter(Attempt.payment_status == "pending").all()
 #     for attempt in attempts:
-#         if attempt.created_at.isoweekday == datetime.now().isoweekday():
-#             attempt.closed_at = datetime.now()
+#         if attempt.created_at.isoweekday == datetime.now(timezone.utc).isoweekday():
+#             attempt.closed_at = datetime.now(timezone.utc)
 #             attempt.payment_status = "failed"
 #             attempt.failure_cause = "7 day timeout"
 #             db.session.commit()

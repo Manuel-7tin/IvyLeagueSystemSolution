@@ -189,6 +189,7 @@ def store_file(filename, file):
         return {"error": "File or Filename already exists"}, 500
 
     try:
+        file.seek(0)
         s3.upload_fileobj(file, bucket_name, object_name)
         url = f"https://lms-mini-storage.s3.eu-north-1.amazonaws.com/{filename}"
     except NoCredentialsError:
@@ -234,8 +235,12 @@ def list_em():
 
 def validate_questions(excel_file, paper, diet):
     try:
-        df = pd.read_excel(excel_file, header=None)
-        mapping = {k.lower(): v for k, v in zip(df[0], df[1])}
+        df = pd.read_excel(excel_file, nrows=4, header=None)
+        # for k, v in zip(df[0], df[1]):
+        #     print(k, v)
+        #     if pd.isna(k):
+        #         print("isna oo")
+        mapping = {k.lower(): v for k, v in zip(df[0], df[1]) if not pd.isna(k)}
         print(mapping)
         if mapping["paper"].lower() != paper.lower():
             return False, "Wrong paper!"
@@ -260,6 +265,7 @@ def validate_questions(excel_file, paper, diet):
             return False, f"The 'No' column must be exactly 1 to {que_num} in order."
 
         for i in content.Answer:
+            print(i, [a.lower() for a in anss])
             if i.lower() not in [a.lower() for a in anss]:
                 return False, "Invalid 'correct option'!"
     except ParserError:
@@ -271,6 +277,7 @@ def validate_questions(excel_file, paper, diet):
     except ZeroDivisionError:
         return False, "Unknown error while reading xlsx!"
     else:
+        excel_file.seek(0)
         return True, "Successful"
 
 def generate_code():
@@ -284,19 +291,27 @@ def generate_code():
 def read_mcq(file, need):
     response = {}
     try:
-        content = pd.read_excel("tr.xlsx", header=5)
+        file.seek(0, 2)  # go to end
+        size = file.tell()
+        file.seek(0)
+
+        print("FILE SIZE:", size)
+        print("FIRST 20 BYTES:", file.read(20))
+        file.seek(0)
+        content = pd.read_excel(file, header=5)
         if need == "que":
             for entry in content.iterrows():
                 n = entry[0]+1
-                response[n] = entry[1].to_dict()
+                response[n] = entry[1].drop("Answer").to_dict()
         elif need == "ans":
             for entry in content.iterrows():
                 response[entry[1].No] = entry[1].Answer
         else:
             raise Exception
-    except:
+    except ZeroDivisionError:
         return {}
     else:
         return response
+# print("hj", read_mcq(0, "que"))
 # send_file()
-# print(generate_token(1, "super_admin"))
+# print(generate_token(5, "student"))

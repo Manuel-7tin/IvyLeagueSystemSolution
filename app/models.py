@@ -74,7 +74,7 @@ class Staff(db.Model): #(UserMixin, db.Model):
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     password: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(20), nullable=False)
-    last_active: Mapped[datetime] = mapped_column(DateTime, default=datetime.now())
+    last_active: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now())
     gender = mapped_column(String(10), nullable=False)
     birth_date: Mapped[date] = mapped_column(Date, nullable=False)
     house_address: Mapped[str] = mapped_column(String(200))
@@ -105,7 +105,7 @@ class StaffActivity(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(40), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False) # Increase to 500
-    time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     staff_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("staffs.id"), nullable=False)
     staff = relationship("Staff", back_populates="activities")
     object_id: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -127,7 +127,7 @@ class Student(db.Model):
     profile_photo: Mapped[str] = mapped_column(String(200), nullable=False)
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     gender = mapped_column(String(10), nullable=False)
-    last_active: Mapped[datetime] = mapped_column(DateTime, default=datetime.now())
+    last_active: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now())
     joined: Mapped[date] = mapped_column(Date, nullable=False)
     # new_student: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # sponsored: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -139,7 +139,7 @@ class Student(db.Model):
     house_address: Mapped[str] = mapped_column(String(200))
     referral_source: Mapped[str] = mapped_column(String(100)) # friend, (tiktok/insta/fb/tw) ad, flyer etc
     referrer: Mapped[str] = mapped_column(String(100), nullable=True)
-    employment_status:  Mapped[str] = mapped_column(String(30))
+    employment_status:  Mapped[str] = mapped_column(String(100))
     access: Mapped[bool] = mapped_column(Boolean, default=True)
     can_pay_partially: Mapped[bool] = mapped_column(Boolean, default=False)
     # revision: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -192,12 +192,14 @@ class Diet(db.Model):
     title: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=False)
     available_papers: Mapped[list] = mapped_column(ARRAY(String), nullable=False)
-    reg_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    reg_deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    revision_start: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    revision_deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    completion_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    reg_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reg_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revision_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revision_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completion_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    template: Mapped[str] = mapped_column(String(40), nullable=False)
     enrollments = relationship("Enrollment", back_populates="diet")
+    edited_at: Mapped[date] = mapped_column(Date, nullable=True)
     reviews = relationship("Review", back_populates="diet")
 
 
@@ -240,6 +242,7 @@ class Paper(db.Model):
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
     available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    edited_at: Mapped[date] = mapped_column(Date, nullable=True)
     # student = relationship("Enrollment", back_populates="paper")
     students = relationship("Enrollment", secondary=student_paper, back_populates="papers")
 
@@ -252,11 +255,11 @@ class Attempt(db.Model):
     last_name: Mapped[str] = mapped_column(String(30), nullable=False)
     user_type: Mapped[str] = mapped_column(String(20), nullable=False)
     phone_number: Mapped[str] = mapped_column(String(20), nullable=False)
-    created_at: Mapped[date] = mapped_column(DateTime, default=datetime.now)
+    created_at: Mapped[date] = mapped_column(DateTime(timezone=True), default=datetime.now)
     purpose: Mapped[str] = mapped_column(String(20), nullable=False)
     context: Mapped[list] = mapped_column(ARRAY(String), nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    closed_at: Mapped[Optional[date]] = mapped_column(DateTime)
+    closed_at: Mapped[Optional[date]] = mapped_column(DateTime(timezone=True))
     payment_reference: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
     payment_status: Mapped[str] = mapped_column(String(20), default='pending')
     failure_cause: Mapped[Optional[str]] = mapped_column(String(200))
@@ -274,7 +277,7 @@ class Signee(db.Model):
     first_name: Mapped[str] = mapped_column(String(30), nullable=False)
     last_name: Mapped[str] = mapped_column(String(30), nullable=False)
     phone_number: Mapped[str] = mapped_column(String(15), unique=True)
-    created_at = mapped_column(DateTime, default=datetime.now)
+    created_at = mapped_column(DateTime(timezone=True), default=datetime.now)
     email_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     birth_date: Mapped[date] = mapped_column(Date, nullable=False)
     gender = mapped_column(String(5), nullable=False)
@@ -292,13 +295,14 @@ class Sponsored(db.Model):
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     diet_name: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[date] = mapped_column(Date, nullable=False, default=datetime.now())
+    edited_at: Mapped[date] = mapped_column(Date, nullable=True)
     #Account for this diet name in sponsored creation and use
 
 
 class Action(db.Model):
     __tablename__ = "actions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    date: Mapped[date] = mapped_column(DateTime, default=datetime.now())
+    date: Mapped[date] = mapped_column(DateTime(timezone=True), default=datetime.now())
     actor: Mapped[str] = mapped_column(String(40), nullable=False)
     action: Mapped[str] = mapped_column(String(30), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -316,11 +320,13 @@ class Scholarship(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(100), nullable=False)
     paper: Mapped[str] = mapped_column(String, nullable=False)
+    user_type: Mapped[str] = mapped_column(String(15), nullable=False)
     discount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     diet_name: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[date] = mapped_column(Date, nullable=False, default=datetime.now())
-    # Might want to add type : {signee & student}
+    edited_at: Mapped[date] = mapped_column(Date, nullable=True)
+    # Might want to add type : {signee & student} | Done
 
 class DietVersionMetadata(db.Model):
     __tablename__ = "diet_version_metadata"
@@ -366,8 +372,8 @@ class File(db.Model):
     __tablename__ = "files"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     folder_id: Mapped[int] = mapped_column(Integer, ForeignKey("directory_instance.id"), nullable=False)
-    name: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
-    mime_type: Mapped[str] = mapped_column(String(15), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    mime_type: Mapped[str] = mapped_column(Text, nullable=False)
     size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     file_type: Mapped[str] = mapped_column(String(20), nullable=False)
     date_uploaded: Mapped[date] = mapped_column(Date, nullable=False, default=datetime.now())
@@ -381,19 +387,20 @@ class File(db.Model):
 #     course_id: Mapped[int] = mapped_column(Integer, nullable=False)
 #     parent_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
 #     name: Mapped[str] = mapped_column(String(30), nullable=False)
-#     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now())
+#     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now())
 
 
 class McqTest(db.Model):
     __tablename__ = "mcq_tests"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     test_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
-    file_name: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
+    file_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     diet_name: Mapped[str] = mapped_column(String(50), nullable=False)
     paper_code: Mapped[str] = mapped_column(String(40), nullable=False)
     course_spec: Mapped[str] = mapped_column(String(30), nullable=False)
+    pass_mark: Mapped[int] = mapped_column(Integer, nullable=False)
     high_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    duration: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration: Mapped[int] = mapped_column(Integer, nullable=False) # In seconds
     date_uploaded: Mapped[date] = mapped_column(Date, nullable=False, default=datetime.now())
 
     # Optional link to File (nullable=True)
@@ -409,6 +416,7 @@ class McqHistory(db.Model):
     high_score: Mapped[int] = mapped_column(Integer, nullable=False)
     result: Mapped[dict] =  mapped_column(db.JSON, nullable=False) # {1: ["A", "A"]}
     code: Mapped[str] = mapped_column(String(20), nullable=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False) # passed or failed
     date_taken: Mapped[date] = mapped_column(Date, nullable=False, default=datetime.now())
 
     student_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("students.id"), nullable=False)
@@ -440,8 +448,8 @@ class Review(db.Model):
     diet = relationship("Diet", back_populates="reviews")
     paper_code: Mapped[str] = mapped_column(String(10), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
-    comment: Mapped[str] = mapped_column(String(256), nullable=False)
-    created_at: Mapped[date] = mapped_column(DateTime, nullable=False, default=datetime.now())
+    comment: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[date] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.now())
 # course, level, code, file address
 
 # class File(db.Model):
@@ -451,7 +459,7 @@ class Review(db.Model):
 #     name: Mapped[str] = mapped_column(String(30), nullable=False)
 #     file_type: Mapped[str] = mapped_column(String(15), nullable=False)
 #     file_path: Mapped[str] = mapped_column(String(15), nullable=False)
-#     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now())
+#     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now())
 # 4. folders Table (Hierarchical Structure)
 # Use self-referencing foreign key to allow nested folders.
 # folders (
@@ -482,7 +490,7 @@ class Review(db.Model):
 #     receipt_number: Mapped[str] = mapped_column(String(100), nullable=False)
 #     student_reg: Mapped[str] = mapped_column(String(100), nullable=False)
 #     pdf_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
-#     created_on: Mapped[date] = mapped_column(DateTime, default=datetime.now())
+#     created_on: Mapped[date] = mapped_column(DateTime(timezone=True), default=datetime.now())
 #     student_id: Mapped[int] = mapped_column(Integer, db.ForeignKey("students.id"))
 #     student = relationship("Student", back_populates="receipts")
 
