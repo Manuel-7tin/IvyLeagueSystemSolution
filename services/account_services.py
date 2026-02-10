@@ -274,39 +274,52 @@ def send_password_reset_message(username: str, user_email: str):
         print(f"An error occurred: {e}")
         return 0
 
-    # 4. Send the letter generated in step 3 to that person's email address.
-    message = EmailMessage()
-    message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
-    message["To"] = user_email
-    message["Subject"] = msg_subject
-    message.add_alternative(html_content, subtype='html')
-    message.add_header("Reply-to", "updates@ivyleaguenigeria.com")
+    # # 4. Send the letter generated in step 3 to that person's email address.
+    # message = EmailMessage()
+    # message["From"] = f"Ivy League Updates <{MAIL_SENDER}>"
+    # message["To"] = user_email
+    # message["Subject"] = msg_subject
+    # message.add_alternative(html_content, subtype='html')
+    # message.add_header("Reply-to", "updates@ivyleaguenigeria.com")
+    #
+    # context = ssl.create_default_context()
+    # breaks = 0
 
-    context = ssl.create_default_context()
-    breaks = 0
-    MAX_RETRIES = 3
-    for attempt in range(MAX_RETRIES):
-    # while True:
-        try:
-            with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context, timeout=10) as mail:
-                mail.login(user=MAIL_SENDER, password=PASSWORD)
-                mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
-        except smtplib.SMTPConnectError as f:
-            print("error as", f)
-        except smtplib.SMTPException as e:
-            print("Encountered smtp error :", e)
-            break
-        except ssl.SSLError as e:
-            print("Encountered ssl error :", e)
-        except socket.gaierror as e:
-            print("there is an error:", e)
-            breaks += 1
-            time.sleep(3)
-            if breaks > 4:
-                break
-        else:
-            print("An email has been sent")
-            break
+    import resend
+
+    resend.api_key = os.getenv("RESEND_API_KEY")
+
+    r = resend.Emails.send({
+        "from": "onboarding@resend.dev",
+        "to": user_email,
+        "subject": "Hello World",
+        "html": "<p>Congrats on sending your <strong>first email</strong>!</p>"
+    })
+
+
+    # MAX_RETRIES = 3
+    # for attempt in range(MAX_RETRIES):
+    # # while True:
+    #     try:
+    #         with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context, timeout=10) as mail:
+    #             mail.login(user=MAIL_SENDER, password=PASSWORD)
+    #             mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
+    #     except smtplib.SMTPConnectError as f:
+    #         print("error as", f)
+    #     except smtplib.SMTPException as e:
+    #         print("Encountered smtp error :", e)
+    #         break
+    #     except ssl.SSLError as e:
+    #         print("Encountered ssl error :", e)
+    #     except socket.gaierror as e:
+    #         print("there is an error:", e)
+    #         breaks += 1
+    #         time.sleep(3)
+    #         if breaks > 4:
+    #             break
+    #     else:
+    #         print("An email has been sent")
+    #         break
 
 
 def send_receipt(receipt_no: str, user_data: dict, details: list, spons :bool=False):
