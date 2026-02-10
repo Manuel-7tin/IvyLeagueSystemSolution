@@ -284,9 +284,11 @@ def send_password_reset_message(username: str, user_email: str):
 
     context = ssl.create_default_context()
     breaks = 0
-    while True:
+    MAX_RETRIES = 3
+    for attempt in range(MAX_RETRIES):
+    # while True:
         try:
-            with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context) as mail:
+            with smtplib.SMTP_SSL(host="smtp.ivyleaguenigeria.com", port=465, context=context, timeout=10) as mail:
                 mail.login(user=MAIL_SENDER, password=PASSWORD)
                 mail.sendmail(from_addr=MAIL_SENDER, to_addrs=user_email, msg=message.as_string())
         except smtplib.SMTPConnectError as f:
