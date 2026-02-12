@@ -198,7 +198,7 @@ def create_receipt_pdf2(num: str, watermark_img="resource/ivyleague-logo.jpg", *
 def send_signup_message(username: str, user_email: str):
     msg_subject = "Welcome to Ivy League Associates! Please Confirm Your Email"
     token = generate_confirmation_token(user_email, 24)
-    link = f"{os.getenv('FRONTEND_URL')}/accounts/confirm-email?token={token}"
+    link = f"{os.getenv('STUDENT_FRONTEND_URL')}/accounts/confirm-email?token={token}"
     # print(link)
 
 #     print("Trying to read lettr. #Debug")
@@ -264,7 +264,7 @@ def send_signup_message(username: str, user_email: str):
 def send_password_reset_message(username: str, user_email: str):
     msg_subject = "Reset Your Ivy League Associates LMS Password"
     token = generate_confirmation_token(user_email, 0.168) # Token expires after 10 minutes
-    link = f"{os.getenv('FRONTEND_URL')}/accounts/reset-password?token={token}"
+    link = f"{os.getenv('STUDENT_FRONTEND_URL')}/accounts/reset-password?token={token}"
     print(link)
 
     try:
@@ -391,10 +391,10 @@ def send_staff_creation_message(username: str, user_email: str, type_: str):
     token = generate_confirmation_token(user_email, 48)
     if type_ == "initialize-admin":
         msg_subject = "You've Been Chosen as an Admin!"
-        link = f"{os.getenv('FRONTEND_URL')}/accounts/complete-admin?token={token}"
+        link = f"{os.getenv('STAFF_FRONTEND_URL')}/accounts/complete-admin?token={token}"
     else:
         msg_subject = "Welcome to Ivy League LMS"
-        link = f"{os.getenv('FRONTEND_URL')}/accounts/dashboard"
+        link = f"{os.getenv('STAFF_FRONTEND_URL')}/accounts/dashboard"
     print(link)
 
     try:
